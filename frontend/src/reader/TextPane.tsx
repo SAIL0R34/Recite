@@ -223,7 +223,7 @@ export default function TextPane({
     <div className="relative min-h-0 flex-1">
       <div
         ref={containerRef}
-        className="recite-scroll h-full overflow-y-auto px-6 py-8"
+        className="recite-scroll h-full overflow-y-auto px-3 py-6 sm:px-6 sm:py-8"
         onWheel={markUserScroll}
         onTouchMove={markUserScroll}
       >

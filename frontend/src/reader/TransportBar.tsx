@@ -42,7 +42,7 @@ export default function TransportBar({
 
   return (
     <div
-      className="flex items-center gap-3 border-t px-4 py-2"
+      className="flex items-center gap-2 border-t px-3 py-2 sm:gap-3 sm:px-4"
       style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
     >
       <button
@@ -68,11 +68,11 @@ export default function TransportBar({
         10⏩
       </button>
 
-      <span className="tabular-nums text-xs" style={{ color: 'var(--muted)' }}>
+      <span className="tabular-nums text-xs shrink-0" style={{ color: 'var(--muted)' }}>
         {fmt(readyPos)}
       </span>
 
-      <div className="relative min-w-[8rem] flex-1">
+      <div className="relative min-w-0 flex-1">
         <input
           type="range"
           className="scrub"
@@ -119,7 +119,7 @@ export default function TransportBar({
         ))}
       </div>
 
-      <span className="tabular-nums text-xs" style={{ color: 'var(--muted)' }}>
+      <span className="tabular-nums text-xs shrink-0" style={{ color: 'var(--muted)' }}>
         {fmt(timeline.readyMs)}
       </span>
 
