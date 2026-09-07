@@ -8,6 +8,7 @@ import type {
   LibraryEntry,
   BookDocument,
   Manifest,
+  ManifestSection,
   Progress,
   Settings,
   StatusCounts,
@@ -83,8 +84,20 @@ export const deleteBook = (id: string) =>
 export const getDocument = (id: string): Promise<BookDocument> =>
   request(`/api/books/${encodeURIComponent(id)}/document`)
 
-export const getManifest = (id: string): Promise<Manifest> =>
-  request(`/api/books/${encodeURIComponent(id)}/manifest`)
+export const getManifest = (
+  id: string,
+  opts?: { slim?: boolean },
+): Promise<Manifest> =>
+  request(
+    `/api/books/${encodeURIComponent(id)}/manifest${opts?.slim ? '?timings=none' : ''}`,
+  )
+
+/** Word timings for one section — fetched lazily when audio needs them. */
+export const getSectionTimings = (
+  id: string,
+  idx: number,
+): Promise<ManifestSection> =>
+  request(`/api/books/${encodeURIComponent(id)}/timings/${idx}`)
 
 export const getStatus = (id: string): Promise<StatusCounts> =>
   request(`/api/books/${encodeURIComponent(id)}/status`)

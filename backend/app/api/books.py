@@ -99,16 +99,42 @@ def get_document(book_id: str):
     p = config.book_file(book_id, "document.json")
     if not p.exists():
         raise HTTPException(404, "document not found")
-    return json.loads(p.read_text(encoding="utf-8"))
+    return FileResponse(p, media_type="application/json",
+                        headers={"Cache-Control": "private, must-revalidate"})
 
 
 @router.get("/{book_id}/manifest")
-def get_manifest(book_id: str):
+def get_manifest(book_id: str, timings: str = ""):
+    """`?timings=none` strips per-word timings (chunks keep their offsets).
+
+    Word data is >90% of the manifest and only needed for the section about
+    to be played; the reader paints text from the slim form instantly."""
     _require(book_id)
     m = manifestio.load(book_id)
     if not m:
         raise HTTPException(404, "manifest not found")
+    if timings == "none":
+        m = {**m, "sections": [
+            {**s, "chunks": [{k: v for k, v in c.items() if k != "words"}
+                             for c in s.get("chunks", [])]}
+            for s in m.get("sections", [])
+        ]}
     return m
+
+
+@router.get("/{book_id}/timings/{section_idx}")
+def get_timings(book_id: str, section_idx: int):
+    """One section with word timings, for the player only. 404 if the
+    section does not exist; a pending section simply has no words."""
+    _require(book_id)
+    m = manifestio.load(book_id)
+    if not m:
+        raise HTTPException(404, "manifest not found")
+    section = next((s for s in m.get("sections", [])
+                    if s.get("idx") == section_idx), None)
+    if section is None:
+        raise HTTPException(404, f"section {section_idx} not found")
+    return section
 
 
 @router.get("/{book_id}/audio/{fname}")

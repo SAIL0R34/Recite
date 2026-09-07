@@ -30,7 +30,7 @@ export default function TextPane({
 }: {
   doc: BookDocument
   manifest: Manifest
-  timeline: Timeline
+  timeline: Timeline | null
 }) {
   const sectionIdx = usePlayerStore((s) => s.sectionIdx)
   const follow = usePlayerStore((s) => s.followMode)
@@ -49,10 +49,10 @@ export default function TextPane({
     for (const i of [sectionIdx - 1, sectionIdx, sectionIdx + 1]) {
       const ds = doc.sections.find((s) => s.idx === i)
       const ms = manifest.sections.find((s) => s.idx === i)
-      if (ds && ms && timeline.byIndex[i]) out.push(i)
+      if (ds && ms) out.push(i)
     }
     return out
-  }, [sectionIdx, doc, manifest, timeline])
+  }, [sectionIdx, doc, manifest])
 
   // (Re)query word spans once per render — not per frame.
   useEffect(() => {
@@ -134,13 +134,13 @@ export default function TextPane({
           {indices.map((i) => {
             const ds = doc.sections.find((s) => s.idx === i)!
             const ms = manifest.sections.find((s) => s.idx === i)!
-            const entry = timeline.byIndex[i]
+            const entry = timeline?.byIndex[i]
             return (
               <SectionView
                 key={i}
                 docSection={ds}
                 manSection={ms}
-                sectionStartMs={entry.startMs}
+                sectionStartMs={entry?.startMs ?? 0}
               />
             )
           })}

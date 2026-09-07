@@ -36,6 +36,8 @@ export default function ReaderView() {
   const timeline = store.timeline
 
   // ---- load -----------------------------------------------------------
+  // Text-first: the document alone paints prose instantly (stub manifest);
+  // the slim manifest (no word timings) follows and upgrades the UI.
   useEffect(() => {
     let dead = false
     setError(null)
@@ -43,11 +45,18 @@ export default function ReaderView() {
     setManifest(null)
     void (async () => {
       try {
-        const [d, m, books] = await Promise.all([
-          getDocument(bookId),
-          getManifest(bookId),
-          useLibraryStore.getState().refresh().then(() => undefined),
-        ])
+        const docP = getDocument(bookId)
+        const slimP = getManifest(bookId, { slim: true })
+        const refreshP = useLibraryStore
+          .getState()
+          .refresh().then(() => undefined)
+        void docP.then((d) => {
+          if (!dead && !manifest) {
+            setDoc(d)
+            setManifest(stubManifest(d))
+          }
+        }).catch(() => { /* main try/catch below reports it */ })
+        const [d, m] = await Promise.all([docP, slimP, refreshP])
         if (dead) return
         setDoc(d)
         setManifest(m)
@@ -81,13 +90,25 @@ export default function ReaderView() {
     }
   }, [bookId])
 
+  // Ready sections render without word data (slim manifest); fetch timings
+  // for the visible trio so highlighting works. Cheap: one section ~50 KB.
+  const sectionIdx = store.sectionIdx
+  useEffect(() => {
+    if (!manifest) return
+    for (const i of [sectionIdx - 1, sectionIdx, sectionIdx + 1]) {
+      const s = manifest.sections.find((x) => x.idx === i)
+      if (s && s.status === "ready" && !(s.chunks?.[0]?.words?.length))
+        void usePlayerStore.getState().ensureTimings(i)
+    }
+  }, [manifest, sectionIdx])
+
   // ---- SSE + polling fallback -------------------------------------------
   useEffect(() => {
     if (!manifest) return
     let lastReady = -1
     const reload = async () => {
       try {
-        const m = await getManifest(bookId)
+        const m = await getManifest(bookId, { slim: true })
         setManifest(m)
         usePlayerStore.getState().setManifest(m)
       } catch {
@@ -241,7 +262,7 @@ export default function ReaderView() {
         </Link>
       </div>
     )
-  if (!doc || !manifest || !timeline)
+  if (!doc || !manifest)
     return (
       <div className="p-8 text-sm" style={{ color: 'var(--muted)' }}>
         Opening…
@@ -276,7 +297,7 @@ export default function ReaderView() {
           {store.playing ? '⏸ Pause' : '▶ Continue'}
         </button>
         <PercentRing percent={percent} />
-        <ChapterMenu timeline={timeline} />
+        {timeline && <ChapterMenu timeline={timeline} />}
         <button
           className="btn btn-sm"
           onClick={() => setAppearanceOpen((v) => !v)}
@@ -301,12 +322,32 @@ export default function ReaderView() {
         />
       </div>
 
-      <TransportBar
-        timeline={timeline}
-        onToggleBookmarks={() => setDrawerOpen((v) => !v)}
-      />
+      {timeline && (
+        <TransportBar
+          timeline={timeline}
+          onToggleBookmarks={() => setDrawerOpen((v) => !v)}
+        />
+      )}
     </div>
   )
+}
+
+/** Manifest stand-in built from the document alone, so prose paints before
+ *  the (slim) manifest arrives; every section reads as pending. */
+function stubManifest(doc: BookDocument): Manifest {
+  return {
+    engine: '',
+    voice: '',
+    alignment: 'interp',
+    sections: doc.sections.map((s) => ({
+      idx: s.idx,
+      title: s.title ?? '',
+      audio: '',
+      duration_ms: 0,
+      status: 'pending',
+      chunks: [],
+    })),
+  }
 }
 
 function PercentRing({ percent }: { percent: number }) {

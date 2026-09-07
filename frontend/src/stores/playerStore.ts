@@ -14,6 +14,7 @@ import {
   type Timeline,
 } from '../player/timeline'
 import { engine } from '../player/engine'
+import { getSectionTimings } from '../api/client'
 
 export interface PlayerState {
   bookId: string | null
@@ -37,6 +38,8 @@ export interface PlayerState {
     percent: number,
   ) => Promise<void>
   setManifest: (manifest: Manifest) => void
+  /** merge full word timings for one section (fetched lazily) */
+  ensureTimings: (idx: number) => Promise<void>
   setPercent: (percent: number) => void
 
   play: () => void
@@ -82,6 +85,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       followMode: true,
     })
     engine.load(bookId, manifest)
+  },
+
+  async ensureTimings(idx) {
+    const { manifest, bookId } = get()
+    const sec = manifest?.sections.find((s) => s.idx === idx)
+    if (!manifest || !bookId || !sec) return
+    if (sec.status !== 'ready' || sec.chunks?.some((c) => c.words?.length)) return
+    try {
+      const full = await getSectionTimings(bookId, idx)
+      const merged: Manifest = {
+        ...manifest,
+        sections: manifest.sections.map((s) => (s.idx === idx ? full : s)),
+      }
+      set({ manifest: merged, manifestVersion: get().manifestVersion + 1 })
+      engine.setManifest(merged)
+    } catch {
+      /* section went pending again / server busy — highlighter stays off */
+    }
   },
 
   setManifest(manifest) {

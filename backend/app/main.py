@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -13,6 +14,8 @@ from .api import books, bookmarks, events_api, progress, settings_api
 from .db import db
 
 app = FastAPI(title="recite")
+# JSON payloads run to megabytes (document, manifest); gzip cuts ~5-6x.
+app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 for r in (books.router, progress.router, bookmarks.router,
           settings_api.router, events_api.router):
