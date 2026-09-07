@@ -5,6 +5,7 @@
 import type {
   BookSummary,
   Bookmark,
+  Highlight,
   LibraryEntry,
   BookDocument,
   Manifest,
@@ -169,3 +170,30 @@ export const getSettings = (): Promise<Settings> => request('/api/settings')
 
 export const putSettings = (s: Settings): Promise<Settings> =>
   request('/api/settings', { method: 'PUT', body: j(s) })
+
+// ---- highlights ----
+
+export const getHighlights = (id: string): Promise<Highlight[]> =>
+  request<Highlight[]>(`/api/books/${encodeURIComponent(id)}/high`)
+
+export const createHighlight = (
+  id: string,
+  body: {
+    section_idx: number
+    para_idx: number
+    start_ti: number
+    end_ti: number
+    color: string
+    text: string
+  },
+): Promise<Highlight> =>
+  request<Highlight>(`/api/books/${encodeURIComponent(id)}/high`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+export const deleteHighlight = (id: string, highlightId: string): Promise<void> =>
+  request<{ ok: boolean }>(
+    `/api/books/${encodeURIComponent(id)}/high/${encodeURIComponent(highlightId)}`,
+    { method: 'DELETE' },
+  ).then(() => undefined)

@@ -252,3 +252,44 @@ input[type='range'].speed {
   accent-color: var(--accent);
   width: 140px;
 }
+
+/* ---- user highlights (kar-mark) ---- */
+.kar-mark {
+  border-radius: 3px;
+  padding: 0.05em 0.1em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  cursor: pointer;
+}
+.kar-mark-amber { background: rgba(245, 166, 35, 0.32); }
+.kar-mark-green { background: rgba(104, 188, 116, 0.30); }
+.kar-mark-sky   { background: rgba(94, 171, 222, 0.30); }
+.kar-mark-rose  { background: rgba(236, 116, 140, 0.30); }
+.kar-menu {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: var(--panel, #1c1c20);
+  border: 1px solid var(--border, #333);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.kar-menu-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.kar-menu-amber { background: #f5a623; }
+.kar-menu-green { background: #68bc74; }
+.kar-menu-sky   { background: #5eabde; }
+.kar-menu-rose  { background: #ec748c; }
+.kar-menu-close {
+  padding: 0 4px;
+  color: var(--muted, #888);
+  cursor: pointer;
+}

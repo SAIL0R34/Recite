@@ -44,11 +44,23 @@ CREATE TABLE IF NOT EXISTS bookmarks(
   ms REAL NOT NULL,
   created_at REAL
 );
+CREATE TABLE IF NOT EXISTS highlights(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  section_idx INTEGER NOT NULL,
+  para_idx INTEGER NOT NULL,
+  start_ti INTEGER NOT NULL,
+  end_ti INTEGER NOT NULL,
+  color TEXT NOT NULL DEFAULT 'amber',
+  text TEXT DEFAULT '',
+  created_at REAL
+);
 CREATE TABLE IF NOT EXISTS settings(
   key TEXT PRIMARY KEY,
   value TEXT
 );
 CREATE INDEX IF NOT EXISTS bookmarks_book ON bookmarks(book_id);
+CREATE INDEX IF NOT EXISTS highlights_book ON highlights(book_id);
 """
 
 
@@ -163,6 +175,33 @@ class Database:
     def delete_bookmark(self, bookmark_id: str) -> None:
         with self._lock:
             self._conn.execute("DELETE FROM bookmarks WHERE id=?", (bookmark_id,))
+            self._conn.commit()
+
+    # ------------------------------------------------------ highlights
+    def list_highlights(self, book_id: str) -> list:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM highlights WHERE book_id=? ORDER BY created_at", (book_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_highlight(self, book_id: str, section_idx: int, para_idx: int,
+                      start_ti: int, end_ti: int, color: str, text: str) -> dict:
+        rec = {"id": uuid.uuid4().hex[:10], "book_id": book_id,
+               "section_idx": section_idx, "para_idx": para_idx,
+               "start_ti": start_ti, "end_ti": end_ti, "color": color,
+               "text": text, "created_at": time.time()}
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO highlights(id,book_id,section_idx,para_idx,start_ti,end_ti,color,text,created_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?)",
+                (rec["id"], book_id, section_idx, para_idx, start_ti, end_ti,
+                 color, text, rec["created_at"]))
+            self._conn.commit()
+        return rec
+
+    def delete_highlight(self, highlight_id: str) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM highlights WHERE id=?", (highlight_id,))
             self._conn.commit()
 
     # ------------------------------------------------------ settings

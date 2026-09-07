@@ -14,6 +14,7 @@ import {
 import { sseSupported, subscribeToBookEvents } from '../api/sse'
 import { useLibraryStore } from '../stores/libraryStore'
 import { usePlayerStore } from '../stores/playerStore'
+import { useHighlightStore } from '../stores/highlightStore'
 import { engine } from '../player/engine'
 import TextPane from './TextPane'
 import TransportBar from './TransportBar'
@@ -104,6 +105,11 @@ export default function ReaderView() {
         })
     }
   }, [manifest, sectionIdx])
+
+  // user highlights for this book
+  useEffect(() => {
+    void useHighlightStore.getState().refresh(bookId)
+  }, [bookId])
 
   // ---- SSE + polling fallback -------------------------------------------
   useEffect(() => {

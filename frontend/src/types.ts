@@ -122,3 +122,16 @@ export interface BookEventHandlers {
   onSection?: (e: { idx: number; status: string }) => void
   onGeneration?: (e: { done: boolean }) => void
 }
+
+/** user-marked passage; anchored by (section, paragraph, token range) */
+export interface Highlight {
+  id: string
+  book_id: string
+  section_idx: number
+  para_idx: number
+  start_ti: number
+  end_ti: number
+  color: string
+  text: string
+  created_at: number
+}

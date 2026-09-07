@@ -1,19 +1,33 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BookDocument,
   DocParagraph,
   DocSection,
+  Highlight,
   Manifest,
   ManifestSection,
   ManifestChunk,
 } from '../types'
 import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useHighlightStore } from '../stores/highlightStore'
 import type { Timeline } from '../player/timeline'
+
+const MARK_COLORS = ['amber', 'green', 'sky', 'rose'] as const
 
 interface WordRef {
   el: HTMLElement
   s: number
+}
+
+interface Menu {
+  x: number
+  y: number
+  sec: number
+  para: number
+  start: number
+  end: number
+  text: string
 }
 
 /**
@@ -22,6 +36,10 @@ interface WordRef {
  * data-s/data-e (GLOBAL ms), data-w and data-chunk; a single rAF loop
  * binary-searches the flat [data-w] array and toggles one class on the DOM —
  * no React state per frame.
+ *
+ * Also hosts USER highlights: selecting words pops a color chooser (mouseup
+ * delegation); marks persist via useHighlightStore and render back as
+ * kar-mark spans keyed by (section, para, token index).
  */
 export default function TextPane({
   doc,
@@ -38,6 +56,7 @@ export default function TextPane({
   const highlightStyle = useSettingsStore(
     (s) => s.settings?.highlightStyle ?? 'highlighter',
   )
+  const hlList = useHighlightStore((s) => s.list)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const wordsRef = useRef<WordRef[]>([])
   const followRef = useRef(follow)
@@ -53,6 +72,21 @@ export default function TextPane({
     }
     return out
   }, [sectionIdx, doc, manifest])
+
+  // token index -> highlight, per section:paragraph
+  const hlIndex = useMemo(() => {
+    const m = new Map<string, Map<number, Highlight>>()
+    for (const h of hlList) {
+      const k = `${h.section_idx}:${h.para_idx}`
+      let mm = m.get(k)
+      if (!mm) m.set(k, (mm = new Map()))
+      for (let ti = h.start_ti; ti <= h.end_ti; ti++) mm.set(ti, h)
+    }
+    return m
+  }, [hlList])
+
+  const [menu, setMenu] = useState<Menu | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   // (Re)query word spans once per render — not per frame.
   useEffect(() => {
@@ -116,6 +150,75 @@ export default function TextPane({
       usePlayerStore.getState().setFollow(false)
   }
 
+  // user-highlight interaction: select -> menu; click mark -> remove
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const tokenOf = (n: Node | null): HTMLElement | null => {
+      let cur: Node | null = n
+      while (cur && cur !== el) {
+        if (cur instanceof HTMLElement && cur.dataset.ti) return cur
+        cur = cur.parentNode
+      }
+      return null
+    }
+    const onMouseUp = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        setMenu(null)
+        return
+      }
+      const range = sel.getRangeAt(0)
+      const a = tokenOf(range.startContainer)
+      const b = tokenOf(range.endContainer)
+      if (!a || !b || a.dataset.sec !== b.dataset.sec || a.dataset.para !== b.dataset.para) {
+        setMenu(null)
+        return // v1: marks live inside one paragraph
+      }
+      const t1 = Number(a.dataset.ti)
+      const t2 = Number(b.dataset.ti)
+      const [start, end] = t1 <= t2 ? [t1, t2] : [t2, t1]
+      const anchor = t1 <= t2 ? a : b
+      const wrap = containerRef.current?.parentElement
+      if (!wrap) return
+      const r = anchor.getBoundingClientRect()
+      const wr = wrap.getBoundingClientRect()
+      setMenu({
+        x: Math.max(8, r.left - wr.left),
+        y: r.top - wr.top - 40,
+        sec: Number(a.dataset.sec),
+        para: Number(a.dataset.para),
+        start,
+        end,
+        text: sel.toString().slice(0, 240),
+      })
+    }
+    const onClick = (e: MouseEvent) => {
+      const t = (e.target as HTMLElement).closest?.('[data-hl]')
+      if (t) void useHighlightStore.getState().remove(t.getAttribute('data-hl')!)
+    }
+    el.addEventListener('mouseup', onMouseUp)
+    el.addEventListener('click', onClick)
+    return () => {
+      el.removeEventListener('mouseup', onMouseUp)
+      el.removeEventListener('click', onClick)
+    }
+  }, [])
+
+  const applyMark = (color: string) => {
+    if (!menu) return
+    void useHighlightStore.getState().add({
+      section_idx: menu.sec,
+      para_idx: menu.para,
+      start_ti: menu.start,
+      end_ti: menu.end,
+      color,
+      text: menu.text,
+    })
+    window.getSelection()?.removeAllRanges()
+    setMenu(null)
+  }
+
   return (
     <div className="relative min-h-0 flex-1">
       <div
@@ -141,11 +244,39 @@ export default function TextPane({
                 docSection={ds}
                 manSection={ms}
                 sectionStartMs={entry?.startMs ?? 0}
+                hlIndex={hlIndex}
               />
             )
           })}
         </div>
       </div>
+      {menu && (
+        <div
+          ref={menuRef}
+          className="kar-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {MARK_COLORS.map((c) => (
+            <button
+              key={c}
+              className={`kar-menu-swatch kar-menu-${c}`}
+              title={`highlight (${c}) — click a marked passage to remove`}
+              onClick={() => applyMark(c)}
+            />
+          ))}
+          <button
+            className="kar-menu-close"
+            onClick={() => {
+              window.getSelection()?.removeAllRanges()
+              setMenu(null)
+            }}
+            title="dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {!follow && (
         <button
           className="btn btn-accent absolute bottom-4 left-1/2 -translate-x-1/2 shadow-lg"
@@ -165,10 +296,12 @@ function SectionView({
   docSection,
   manSection,
   sectionStartMs,
+  hlIndex,
 }: {
   docSection: DocSection
   manSection: ManifestSection
   sectionStartMs: number
+  hlIndex: Map<string, Map<number, Highlight>>
 }) {
   const chunksByPara = useMemo(() => {
     const m = new Map<number, ManifestChunk[]>()
@@ -203,6 +336,8 @@ function SectionView({
           para={p}
           chunks={chunksByPara.get(p.idx) ?? []}
           sectionStartMs={sectionStartMs}
+          sectionId={docSection.idx}
+          marks={hlIndex.get(`${docSection.idx}:${p.idx}`)}
         />
       ))}
     </section>
@@ -213,14 +348,19 @@ function ParagraphView({
   para,
   chunks,
   sectionStartMs,
+  sectionId,
+  marks,
 }: {
   para: DocParagraph
   chunks: ManifestChunk[]
   sectionStartMs: number
+  sectionId: number
+  marks?: Map<number, Highlight>
 }) {
   const nodes: React.ReactNode[] = []
   let anyPending = false
   let gi = 0
+  let ti = 0 // token index within paragraph — the highlight anchor
 
   const isPunct = (t: string) =>
     /^[,.;:!?)\]}'"’”]/.test(t)
@@ -236,7 +376,16 @@ function ParagraphView({
     if (nodes.length && !(prevToken === null || isPunct(token)))
       nodes.push(' ')
     prevToken = token
-    const cls = `kw${pending ? ' kar-queued' : ''}`
+    const mark = marks?.get(ti)
+    let cls = `kw${pending ? ' kar-queued' : ''}`
+    if (mark) cls += ` kar-mark kar-mark-${mark.color}`
+    const tiHere = ti++
+    const attrs = {
+      'data-sec': sectionId,
+      'data-para': para.idx,
+      'data-ti': tiHere,
+      ...(mark ? { 'data-hl': mark.id } : {}),
+    }
     if (timing) {
       nodes.push(
         <span
@@ -246,13 +395,14 @@ function ParagraphView({
           data-e={sectionStartMs + timing.e}
           data-w={timing.w}
           data-chunk={chunkIdx}
+          {...attrs}
         >
           {token}
         </span>,
       )
     } else {
       nodes.push(
-        <span key={gi++} className={cls} data-w-plain="1">
+        <span key={gi++} className={cls} data-w-plain="1" {...attrs}>
           {token}
         </span>,
       )

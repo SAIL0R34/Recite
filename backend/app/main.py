@@ -10,14 +10,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, events
-from .api import books, bookmarks, events_api, progress, settings_api
+from .api import books, bookmarks, events_api, highlights, progress, settings_api
 from .db import db
 
 app = FastAPI(title="recite")
 # JSON payloads run to megabytes (document, manifest); gzip cuts ~5-6x.
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
-for r in (books.router, progress.router, bookmarks.router,
+for r in (books.router, progress.router, bookmarks.router, highlights.router,
           settings_api.router, events_api.router):
     app.include_router(r)
 
