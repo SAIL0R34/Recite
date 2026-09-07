@@ -15,6 +15,12 @@ import type { Timeline } from '../player/timeline'
 
 const MARK_COLORS = ['amber', 'green', 'sky', 'rose'] as const
 
+// Light the active word this many ms *before* its aligned onset. Forced-
+// timestamps mark the exact spoken start, which is already a beat late for
+// the eye — a small lead makes the highlight feel synchronous (or slightly
+// ahead, as native karaoke readers do).
+const LEAD_MS = 90
+
 interface WordRef {
   el: HTMLElement
   s: number
@@ -117,7 +123,7 @@ export default function TextPane({
         let idx = -1
         while (lo <= hi) {
           const m = (lo + hi) >> 1
-          if (words[m].s <= g) {
+          if (words[m].s - LEAD_MS <= g) {
             idx = m
             lo = m + 1
           } else {
