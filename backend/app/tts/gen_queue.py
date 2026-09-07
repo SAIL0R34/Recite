@@ -38,6 +38,7 @@ TERMINAL = ("ready", "failed")
 _QUEUE: "queue.PriorityQueue" = queue.PriorityQueue()
 _WORKERS: list = []      # live worker threads (bounded by config.TTS_WORKERS)
 _LOCK = threading.Lock()
+_STATUS_LOCK = threading.Lock()
 _live: set = set()    # (book_id, idx) generating right now
 _queued: set = set()  # (book_id, idx) queued, not yet started
 _active_book: Optional[str] = None
@@ -273,19 +274,29 @@ def _live_for(book_id: str) -> int:
 
 
 def _set_status(book_id: str, idx, status: str) -> dict:
-    """Persist + broadcast one status transition."""
-    manifest = manifestio.load(book_id)
-    if manifest is None:
-        return {}
-    for section in manifest.get("sections", []):
-        if section.get("idx") == idx:
-            section["status"] = status
-            break
-    else:
-        return {}
-    manifestio.save(book_id, manifest)
+    """Persist + broadcast one status transition. Serialized: concurrent
+    pool workers each load-mutate-save the whole manifest, and an unguarded
+    writer can clobber another worker's fresher status."""
+    with _STATUS_LOCK:
+        manifest = manifestio.load(book_id)
+        if manifest is None:
+            return {}
+        for section in manifest.get("sections", []):
+            if section.get("idx") == idx:
+                section["status"] = status
+                break
+        else:
+            return {}
+        manifestio.save(book_id, manifest)
     _publish(book_id, "section", {"idx": idx, "status": status})
     return manifest
+
+
+def live_status(book_id: str) -> dict:
+    """{idx: status} for sections this process is working right now — the
+    manifest can lag a transition by a moment, the live set may not."""
+    with _LOCK:
+        return {i: "synthesizing" for (b, i) in _live if b == book_id}
 
 
 def _maybe_done(book_id: str) -> None:

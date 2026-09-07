@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .. import config, manifestio
 from ..db import db
 from ..ingest.service import IngestError, ingest_file
+from ..tts import gen_queue
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 
@@ -128,4 +129,8 @@ def get_status(book_id: str):
     m = manifestio.load(book_id)
     if not m:
         raise HTTPException(404, "manifest not found")
+    live = gen_queue.live_status(book_id)
+    for section in m.get("sections", []):
+        if section.get("idx") in live and section.get("status") == "pending":
+            section["status"] = live[section["idx"]]
     return manifestio.generation_summary(m)
