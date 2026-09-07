@@ -38,8 +38,9 @@ export interface PlayerState {
     percent: number,
   ) => Promise<void>
   setManifest: (manifest: Manifest) => void
-  /** merge full word timings for one section (fetched lazily) */
-  ensureTimings: (idx: number) => Promise<void>
+  /** merge full word timings for one section (fetched lazily);
+   *  resolves to the merged manifest so callers can mirror it in local state */
+  ensureTimings: (idx: number) => Promise<Manifest | null>
   setPercent: (percent: number) => void
 
   play: () => void
@@ -90,8 +91,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   async ensureTimings(idx) {
     const { manifest, bookId } = get()
     const sec = manifest?.sections.find((s) => s.idx === idx)
-    if (!manifest || !bookId || !sec) return
-    if (sec.status !== 'ready' || sec.chunks?.some((c) => c.words?.length)) return
+    if (!manifest || !bookId || !sec) return null
+    if (sec.status !== 'ready' || sec.chunks?.some((c) => c.words?.length)) return null
     try {
       const full = await getSectionTimings(bookId, idx)
       const merged: Manifest = {
@@ -100,8 +101,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       set({ manifest: merged, manifestVersion: get().manifestVersion + 1 })
       engine.setManifest(merged)
+      return merged
     } catch {
       /* section went pending again / server busy — highlighter stays off */
+      return null
     }
   },
 

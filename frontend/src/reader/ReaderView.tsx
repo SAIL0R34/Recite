@@ -98,7 +98,10 @@ export default function ReaderView() {
     for (const i of [sectionIdx - 1, sectionIdx, sectionIdx + 1]) {
       const s = manifest.sections.find((x) => x.idx === i)
       if (s && s.status === "ready" && !(s.chunks?.[0]?.words?.length))
-        void usePlayerStore.getState().ensureTimings(i)
+        void usePlayerStore.getState().ensureTimings(i).then((merged) => {
+          // mirror into local state so TextPane re-renders words with data-s
+          if (merged) setManifest((cur) => (cur === manifest ? merged : cur))
+        })
     }
   }, [manifest, sectionIdx])
 
