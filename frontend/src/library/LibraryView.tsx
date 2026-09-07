@@ -15,8 +15,9 @@ export default function LibraryView() {
   }, [])
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="recite-scroll h-full overflow-y-auto">
+      <div className="mx-auto max-w-5xl p-6">
+        <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Library</h1>
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
@@ -60,6 +61,7 @@ export default function LibraryView() {
       )}
 
       {dialogOpen && <AddBookDialog />}
+      </div>
     </div>
   )
 }

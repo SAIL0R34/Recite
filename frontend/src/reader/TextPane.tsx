@@ -189,8 +189,8 @@ function SectionView({
           {docSection.title || manSection.title}
           {generating && (
             <span
-              className="kar-pending ml-2 align-middle text-xs"
-              title="audio generating…"
+              className="kar-chip ml-2 align-middle text-xs"
+              title="audio generating — text is readable, synced highlighting starts when the section is done"
             >
               generating…
             </span>
@@ -236,7 +236,7 @@ function ParagraphView({
     if (nodes.length && !(prevToken === null || isPunct(token)))
       nodes.push(' ')
     prevToken = token
-    const cls = `kw${pending ? ' kar-pending' : ''}`
+    const cls = `kw${pending ? ' kar-queued' : ''}`
     if (timing) {
       nodes.push(
         <span

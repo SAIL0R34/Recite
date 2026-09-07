@@ -58,9 +58,9 @@ export default function App() {
             <AppearancePanel />
           </div>
         )}
-        {/* library scrolls here; the reader is exactly h-full and scrolls
-            only inside its text pane, so a book page never gets a global bar */}
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        {/* main never scrolls: the library view and the reader pane own their
+            own scrollbars, so no wheel over the transport bar can move the UI */}
+        <main className="min-h-0 flex-1 overflow-hidden">
           <Routes>
             <Route path="/" element={<LibraryView />} />
             <Route path="/book/:id" element={<ReaderView />} />

@@ -93,19 +93,28 @@ body {
   border-bottom: none;
 }
 
-/* generating shimmer */
-.kar-pending {
-  background: linear-gradient(
-    90deg,
-    var(--surface-2) 25%,
-    var(--border) 50%,
-    var(--surface-2) 75%
-  );
-  background-size: 200% 100%;
-  animation: recite-shimmer 1.6s infinite linear;
-  color: transparent;
-  border-radius: 4px;
-  padding: 0 2px;
+/* Text of a section whose audio is still synthesizing stays fully
+   readable — merely dimmed — so opening a book is useful within seconds. */
+.kar-queued {
+  opacity: 0.45;
+}
+
+.kar-chip {
+  display: inline-block;
+  padding: 0 0.5em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  animation: recite-pulse 1.6s infinite ease-in-out;
+}
+
+@keyframes recite-pulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes recite-shimmer {

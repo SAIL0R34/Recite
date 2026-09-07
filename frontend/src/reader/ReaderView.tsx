@@ -249,10 +249,10 @@ export default function ReaderView() {
     )
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* hero */}
       <div
-        className="flex items-center gap-4 border-b px-5 py-3"
+        className="flex shrink-0 items-center gap-4 border-b px-5 py-3"
         style={{ borderColor: 'var(--border)' }}
       >
         <Link to="/" className="btn btn-ghost btn-sm" title="Library">
