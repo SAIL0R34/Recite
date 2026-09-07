@@ -14,7 +14,7 @@ build:
 	cd frontend && npm run build
 
 run:  ## production: backend serves the built SPA
-	PYTHONPATH=backend $(PY) -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8744
+	PYTHONPATH=backend $(PY) -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8744
 
 test:
 	backend/.venv/bin/python -m pytest backend/tests tests -q

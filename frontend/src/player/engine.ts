@@ -316,6 +316,7 @@ class PlayerEngine {
   }
 
   private loop = (): void => {
+    this.raf = 0 // a fired frame is no longer pending; re-arm below
     const a = this.audio
     const e = this.entry(this._sectionIdx)
     if (a && this.tl && e && a.getAttribute('data-src')) {
