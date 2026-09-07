@@ -1,7 +1,7 @@
 """Progress API. PUT and the sendBeacon endpoint share one synchronous write."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ..db import db
@@ -39,6 +39,13 @@ def put_progress(book_id: str, body: Progress):
 
 
 @router.post("/{book_id}/progress/beacon")
-def beacon_progress(book_id: str, body: Progress):
-    # sendBeacon sends text/plain; FastAPI still parses the JSON body.
+async def beacon_progress(book_id: str, request: Request):
+    # sendBeacon posts text/plain; FastAPI's model parsing only handles JSON
+    # media types, so parse the raw body ourselves or every beacon 422s.
+    import json
+
+    try:
+        body = Progress(**json.loads(await request.body()))
+    except Exception:
+        raise HTTPException(422, "bad beacon payload")
     return _put(book_id, body)

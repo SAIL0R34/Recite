@@ -25,7 +25,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen flex-col" style={{ background: 'var(--bg)' }}>
+      <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
         <header
           className="flex items-center justify-between border-b px-5 py-2.5"
           style={{ borderColor: 'var(--border)' }}
@@ -58,7 +58,9 @@ export default function App() {
             <AppearancePanel />
           </div>
         )}
-        <main className="min-h-0 flex-1">
+        {/* library scrolls here; the reader is exactly h-full and scrolls
+            only inside its text pane, so a book page never gets a global bar */}
+        <main className="min-h-0 flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<LibraryView />} />
             <Route path="/book/:id" element={<ReaderView />} />

@@ -109,6 +109,15 @@ export const putProgress = (id: string, p: Progress) =>
     body: j(p),
   })
 
+/** Kick the TTS queue; boostSection prioritises one section (usually current). */
+export const requestGeneration = (id: string, boostSection?: number) => {
+  const q = boostSection == null ? '' : `?boost=${boostSection}`
+  return request<{ ok: boolean }>(
+    `/api/books/${encodeURIComponent(id)}/generate${q}`,
+    { method: 'POST' },
+  )
+}
+
 /** Final flush on pagehide — sendBeacon needs text/plain for most backends. */
 export const sendProgressBeacon = (id: string, p: Progress): boolean => {
   try {

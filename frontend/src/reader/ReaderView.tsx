@@ -8,6 +8,7 @@ import {
   getProgress,
   getStatus,
   putProgress,
+  requestGeneration,
   sendProgressBeacon,
 } from '../api/client'
 import { sseSupported, subscribeToBookEvents } from '../api/sse'
@@ -55,8 +56,22 @@ export default function ReaderView() {
           .books.find((b) => b.id === bookId)?.percent ?? 0
         await usePlayerStore.getState().load(bookId, d, m, percent)
         const p = await getProgress(bookId)
-        if (dead || !p) return
-        usePlayerStore.getState().resumeFrom(p)
+        if (dead) return
+        if (p) usePlayerStore.getState().resumeFrom(p)
+        // Nothing spoken yet and the queue idle → start TTS now. Bias: the
+        // section in view, unless it's huge (a book's 700-chunk front matter
+        // is ~25 min of synthesis) — then the smallest pending section so
+        // something becomes audible soon.
+        const inflight = ["ready", "synthesizing", "aligning", "encoding"]
+        const pending = m.sections.filter((s) => s.status === "pending")
+        if (!m.sections.some((s) => inflight.includes(s.status)) && pending.length) {
+          const cur = m.sections[usePlayerStore.getState().sectionIdx]
+          const boost =
+            cur && cur.status === "pending" && (cur.chunks?.length ?? 0) <= 400
+              ? cur.idx
+              : pending.slice().sort((a, b) => a.chunks.length - b.chunks.length)[0].idx
+          void requestGeneration(bookId, boost)
+        }
       } catch (e) {
         if (!dead) setError((e as Error).message)
       }
