@@ -171,12 +171,35 @@ def _queued_for(book_id: Optional[str]) -> int:
     return sum(1 for (b, _i) in _queued if b == book_id)
 
 
+_STOP = "__recite_stop__"
+
+
+def stop(timeout: float = 5.0) -> bool:
+    """Ask the dispatcher thread to exit and join it; clears pending work.
+    Idempotent — a later start() spawns a fresh worker."""
+    global _WORKER
+    with _LOCK:
+        t, _WORKER = _WORKER, None
+        _queued.clear()
+    if t is None or not t.is_alive():
+        return True
+    _QUEUE.put((_STOP,))
+    t.join(timeout)
+    return not t.is_alive()
+
+
 def _worker_loop() -> None:
     while True:
         try:
-            _priority, _seq, book_id, idx = _QUEUE.get()
+            item = _QUEUE.get()
         except (queue.Empty, OSError):
             time.sleep(0.5)
+            continue
+        if isinstance(item, tuple) and item and item[0] == _STOP:
+            return
+        try:
+            _priority, _seq, book_id, idx = item
+        except (TypeError, ValueError):
             continue
         try:
             _run(book_id, idx)

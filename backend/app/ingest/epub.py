@@ -20,7 +20,9 @@ from bs4 import BeautifulSoup
 from .chunker import normalize_text
 from .model import Extraction, Section, paragraph_from_text
 
-MIN_TEXT_CHARS = 200                 # average chars per content document
+MIN_TEXT_CHARS = 200                 # chars a spine document needs to count
+MIN_TOTAL_TEXT_CHARS = 400           # book-wide paragraph text floor
+MIN_TEXT_DOCS = 2                    # documents must carry real prose
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _PARA_TAGS = ("p", "li", "blockquote", "pre", "dd", "dt")
 _SKIP_TAGS = ("img", "svg", "script", "style", "head", "meta", "link",
@@ -109,7 +111,15 @@ def _walk(body, ordinal: int, blocks: List[_Block]) -> None:
             continue
         if tag in ("div", "section", "article", "main", "body", "figure",
                    "ul", "ol", "dl", "table", "tbody", "tr", "td", "th"):
-            _walk(child, ordinal, blocks)
+            if child.find_all(True):
+                _walk(child, ordinal, blocks)
+            else:
+                # Leaf container holding only text: many EPUBs mark prose up
+                # as bare <div>s, and recursing into those would drop every
+                # paragraph in the book.
+                text = _text_of(child)
+                if text and _HAS_LETTER.search(text):
+                    blocks.append(("para", child.get("id"), text, ordinal))
             continue
         text = _text_of(child)
         if text and _HAS_LETTER.search(text):
@@ -174,25 +184,35 @@ def extract(path: str) -> Extraction:
 
         blocks: List[_Block] = []
         skipped: List[int] = []
+        doc_chars: List[int] = []
         for ordinal, href in enumerate(spine, start=1):
             try:
                 html = zf.read(href)
             except KeyError:
                 skipped.append(ordinal)
+                doc_chars.append(0)
                 continue
             doc_blocks = _doc_blocks(html, ordinal)
+            doc_chars.append(sum(len(re.sub(r"\s+", "", t))
+                                 for k, _a, t, _o in doc_blocks
+                                 if k == "para"))
             if not any(k == "para" for k, _a, _t, _o in doc_blocks):
                 skipped.append(ordinal)
             blocks.extend(doc_blocks)
 
-        chars = sum(len(re.sub(r"\s+", "", t)) for k, _a, t, _o in blocks
-                    if k == "para")
+        # Judge the book as a whole: cover/nav/copyright documents are tiny
+        # or text-less by design, so a per-document average refuses any real
+        # book that merely has many of them (a 17-document book averaged at
+        # 89 chars/doc despite carrying real prose).
+        chars = sum(doc_chars)
+        textual = sum(1 for c in doc_chars if c >= MIN_TEXT_CHARS)
         warnings: List[str] = []
-        per_doc = chars / max(1, len(spine))
-        if not blocks or per_doc < MIN_TEXT_CHARS:
+        if (not blocks or chars < MIN_TOTAL_TEXT_CHARS
+                or textual < MIN_TEXT_DOCS):
             refuse(f"image-heavy document \u2014 no extractable text "
                    f"(skipped pages {_as_ranges(skipped) or '1'})",
-                   [f"image-heavy: average {int(per_doc)} chars per epub document"])
+                   [f"image-heavy: {textual} text-bearing documents, "
+                    f"{chars} characters of prose total"])
             return
         if skipped:
             warnings.append(f"image-only pages skipped: {_as_ranges(skipped)}")

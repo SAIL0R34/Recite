@@ -35,6 +35,8 @@ HEADING_SIZE_FACTOR = 1.3     # line size >= 1.3x median -> heading candidate
 SHORT_LINE_RATIO = 0.85       # a paragraph ends on a line shorter than this
 SPARSE_PAGE_CHARS = 20        # a page with fewer chars counts as image-only
 IMAGE_HEAVY_MIN_CHARS = 200   # avg chars/page below this -> refuse
+SPARSE_PAGE_STRONG = 800      # page-level bar used by the ratio rule
+IMAGE_HEAVY_RATIO = 0.80      # share of weak pages that refuses the book
 FORMULA_DENSITY = 0.25        # >25% math symbols -> formula
 MONO_RATIO = 0.60             # >60% monospaced chars -> code
 SENTENCE_FINAL = ".!?"
@@ -246,6 +248,16 @@ def _check_extractable(pages: List[_Page]) -> List[str]:
     if avg < IMAGE_HEAVY_MIN_CHARS:
         _fail(_refusal_message(_ranges(sparse) or "1"),
               [f"image-heavy: average {int(avg)} chars per page"])
+    # A document-average that passes can still hide a magazine: captions and
+    # ads lift the mean while almost no page carries real prose. When more
+    # than IMAGE_HEAVY_RATIO of the pages hold barely readable amounts of
+    # text the document is image-heavy as a whole. Only applies to books
+    # long enough for the ratio to mean something.
+    weak = [p.number for p in pages if p.chars < SPARSE_PAGE_STRONG]
+    if len(pages) >= 10 and len(weak) / len(pages) > IMAGE_HEAVY_RATIO:
+        _fail(_refusal_message(_ranges(weak) or "1"),
+              [f"image-heavy: {len(weak)} of {len(pages)} pages image-only "
+               f"(avg {int(avg)} chars per page)"])
     warnings: List[str] = []
     if sparse and len(sparse) < len(pages):
         warnings.append(f"image-only pages skipped: {_ranges(sparse)}")

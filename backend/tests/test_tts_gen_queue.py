@@ -35,6 +35,9 @@ def books(tmp_path, monkeypatch):
     _reset_queue()
     events.bind_loop(FakeLoop())
     yield data
+    # Join the worker before teardown so no in-flight _run() can write to the
+    # (soon deleted) tmp dir while the next test's fixtures race ahead.
+    gen_queue.stop()
     events.bind_loop(None)
     _reset_queue()
 
