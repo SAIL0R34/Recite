@@ -1,14 +1,18 @@
 """Generation queue: pending -> synthesizing -> (aligning) -> encoding -> ready.
 
-One dispatcher thread, two lanes. Lane 1 (priority 0) is the section under the
-reader's cursor plus the one after it, so playback starts instantly; lane 2
-(priority 1) is the rest of the book in document order. A PriorityQueue gives
-lane 1 preemption for free.
+A small pool of worker threads (default 3, `RECITE_TTS_WORKERS`), two lanes.
+Lane 1 (priority 0) is the section under the reader's cursor plus the one after
+it, so playback starts instantly; lane 2 (priority 1) is the rest of the book in
+document order. A PriorityQueue gives lane 1 preemption for free, and multiple
+workers chew through lane 2 several sections at a time. Only one *book* runs at
+once (whichever grabbed the lane first), so the CPU stays on what the reader is
+looking at; workers waiting on another book re-inject their section instead of
+idling on it. Each worker holds its own KPipeline (kokoro_service).
 
 State lives only in the manifest, so any restart resumes per section and
 recover() resets sections caught mid-flight. A failing section is marked failed
-and the queue moves on: the worker thread must never die on a bad chunk, since
-a dead queue silently stalls every book.
+and the queue moves on: a worker thread must never die on a bad chunk, since a
+dead worker quietly starves every book.
 
 Public contract (used by the spine): start(), recover(), request_generation().
 """
@@ -32,7 +36,7 @@ IN_FLIGHT = ("synthesizing", "aligning", "encoding")
 TERMINAL = ("ready", "failed")
 
 _QUEUE: "queue.PriorityQueue" = queue.PriorityQueue()
-_WORKER: Optional[threading.Thread] = None
+_WORKERS: list = []      # live worker threads (bounded by config.TTS_WORKERS)
 _LOCK = threading.Lock()
 _live: set = set()    # (book_id, idx) generating right now
 _queued: set = set()  # (book_id, idx) queued, not yet started
@@ -69,16 +73,21 @@ def engine() -> str:
 engine_string = engine
 
 
-def start() -> None:
-    """Spawn the dispatcher thread. Idempotent."""
-    global _WORKER
+def start(n: Optional[int] = None) -> None:
+    """Bring the worker pool to `n` threads (default config.TTS_WORKERS).
+    Idempotent."""
+    global _WORKERS
+    want = n if n is not None else config.TTS_WORKERS
     with _LOCK:
-        if _WORKER is not None and _WORKER.is_alive():
-            return
-        _WORKER = threading.Thread(target=_worker_loop, name="recite-tts",
-                                   daemon=True)
-        _WORKER.start()
-    log.info("generation queue started")
+        _WORKERS[:] = [t for t in _WORKERS if t.is_alive()]
+        for _ in range(max(0, want - len(_WORKERS))):
+            t = threading.Thread(target=_worker_loop,
+                                 name=f"recite-tts-{len(_WORKERS)}",
+                                 daemon=True)
+            _WORKERS.append(t)
+            t.start()
+        live = len(_WORKERS)
+    log.info("generation queue running with %d worker(s)", live)
 
 
 def request_generation(book_id: str, boost_sections: Optional[List[int]] = None) -> int:
@@ -175,24 +184,25 @@ _STOP = "__recite_stop__"
 
 
 def stop(timeout: float = 5.0) -> bool:
-    """Ask the dispatcher thread to exit and join it; clears pending work.
-    Idempotent — a later start() spawns a fresh worker."""
-    global _WORKER
+    """Ask every worker to exit and join them; clears pending work.
+    Idempotent — a later start() spawns a fresh pool."""
     with _LOCK:
-        t, _WORKER = _WORKER, None
+        workers, _WORKERS[:] = list(_WORKERS), []
         _queued.clear()
-    if t is None or not t.is_alive():
-        return True
-    _QUEUE.put((_STOP,))
-    t.join(timeout)
-    return not t.is_alive()
+    for _ in workers:
+        _QUEUE.put((_STOP,))
+    for t in workers:
+        t.join(timeout)
+    return all(not t.is_alive() for t in workers)
 
 
 def _worker_loop() -> None:
     while True:
         try:
-            item = _QUEUE.get()
-        except (queue.Empty, OSError):
+            item = _QUEUE.get(timeout=1.0)
+        except queue.Empty:
+            continue
+        except OSError:
             time.sleep(0.5)
             continue
         if isinstance(item, tuple) and item and item[0] == _STOP:
@@ -201,18 +211,28 @@ def _worker_loop() -> None:
             _priority, _seq, book_id, idx = item
         except (TypeError, ValueError):
             continue
+        requeued = False
         try:
+            requeued = not _await_book_slot(book_id, item=item)
+            if requeued:
+                continue      # re-injected; stays queued for a later turn
             _run(book_id, idx)
         except Exception:
             log.exception("generation task failed for %s section %s", book_id, idx)
         finally:
-            with _LOCK:
-                _queued.discard((book_id, idx))
+            if not requeued:
+                with _LOCK:
+                    _queued.discard((book_id, idx))
 
 
-def _await_book_slot(book_id: str, timeout: float = 600.0) -> bool:
-    """Block until this book may run. One book at a time keeps the CPU on the
-    book the reader is actually looking at."""
+def _await_book_slot(book_id: str, timeout: float = 600.0,
+                     item=None) -> bool:
+    """May this book run right now? One book at a time keeps the CPU on the
+    book the reader is actually looking at.
+
+    With a pool, a worker holding a section of the blocked book must not idle:
+    pass its queue `item` and it is re-injected (returns False) so the worker
+    goes back for work the gate currently allows."""
     global _active_book
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -222,6 +242,9 @@ def _await_book_slot(book_id: str, timeout: float = 600.0) -> bool:
             if _queued_for(_active_book) == 0:
                 _active_book = None
                 return True
+            if item is not None:
+                _QUEUE.put(item)
+                return False
         time.sleep(0.25)
     return True  # give up waiting; run anyway rather than stall forever
 

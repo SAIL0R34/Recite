@@ -1,10 +1,16 @@
-"""Kokoro TTS service — lazy, thread-safe singleton around KPipeline.
+"""Kokoro TTS service — lazy, per-thread KPipeline instances.
 
 Kokoro is a heavy, model-downloading dependency (first run pulls ~330MB into
 the HF cache). Nothing in this module may be imported eagerly by the rest of
 the app: `get_pipeline()` is the only place that touches kokoro, and every
 caller goes through `synthesize()` which returns plain numpy PCM so no torch
 type leaks past this file.
+
+KPipeline instances are not thread-safe (shared g2p/espeak state), so each
+worker thread builds and reuses its own instance; model weights come from the
+HF page cache, so extra instances cost ~the model size, not the cache size.
+Each pipeline call is limited to RECITE_TTS_THREADS torch threads so several
+workers genuinely overlap instead of fighting over the whole machine.
 
 Kokoro returns 24kHz float audio; we hand back float32 mono numpy + sample rate.
 """
@@ -20,8 +26,10 @@ ENGINE_NAME = "kokoro"
 ENGINE_VERSION = "0.9.4"
 SAMPLE_RATE = 24000
 
-_pipeline = None
+_worker_local = threading.local()
 _pipeline_lock = threading.Lock()
+_first_pipeline_built = threading.Event()
+
 
 
 class KokoroError(RuntimeError):
@@ -51,29 +59,47 @@ def _device() -> str:
     return "cpu"
 
 
-def get_pipeline(lang_code: str = "a"):
-    """KPipeline(lang_code) singleton, built once under a lock.
+def _threads_per_call() -> int:
+    """Cap torch threads so N parallel workers do not oversubscribe the box.
+    First caller wins (torch settings are global); workers wait for that call
+    before building their own pipeline."""
+    try:
+        import torch
 
-    First call may download the model. Safe to call from multiple threads:
-    the loser blocks until the winner finished constructing.
+        torch.set_num_threads(max(1, int(os.environ.get("RECITE_TTS_THREADS", "2"))))
+    except Exception:
+        pass
+
+
+def get_pipeline(lang_code: str = "a"):
+    """One KPipeline per worker thread; first call may download the model.
+
+    The thread that builds first fixes the global torch thread budget; the
+    others wait on `_first_pipeline_built` so they inherit it.
     """
-    global _pipeline
-    if _pipeline is not None:
-        return _pipeline
-    with _pipeline_lock:
-        if _pipeline is None:
-            try:
-                from kokoro import KPipeline
-            except Exception as e:  # pragma: no cover - env-dependent
-                raise KokoroError(f"kokoro is not importable: {e}") from e
-            try:
-                _pipeline = KPipeline(lang_code=lang_code, device=_device())
-            except TypeError:
-                # older/newer KPipeline without a device kwarg
-                _pipeline = KPipeline(lang_code=lang_code)
-            except Exception as e:
-                raise KokoroError(f"failed to initialise Kokoro pipeline: {e}") from e
-    return _pipeline
+    pipe = getattr(_worker_local, "pipeline", None)
+    if pipe is not None:
+        return pipe
+    if not _first_pipeline_built.is_set():
+        with _pipeline_lock:
+            if not _first_pipeline_built.is_set():
+                _threads_per_call()
+                _first_pipeline_built.set()
+    else:
+        _first_pipeline_built.wait(30)
+    try:
+        from kokoro import KPipeline
+    except Exception as e:  # pragma: no cover - env-dependent
+        raise KokoroError(f"kokoro is not importable: {e}") from e
+    try:
+        pipe = KPipeline(lang_code=lang_code, device=_device())
+    except TypeError:
+        # older/newer KPipeline without a device kwarg
+        pipe = KPipeline(lang_code=lang_code)
+    except Exception as e:
+        raise KokoroError(f"failed to initialise Kokoro pipeline: {e}") from e
+    _worker_local.pipeline = pipe
+    return pipe
 
 
 def _to_numpy(audio) -> Tuple[np.ndarray, int]:

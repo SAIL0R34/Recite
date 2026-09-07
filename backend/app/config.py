@@ -33,6 +33,11 @@ def book_file(book_id: str, name: str) -> Path:
 HOST = os.environ.get("RECITE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("RECITE_PORT", "8744"))
 
+# Concurrent Kokoro worker threads in the generation queue. Each holds its own
+# KPipeline, so 3 workers cost ~3x model memory but finish lane-2 sections
+# ~3x faster on an 8+ core machine.
+TTS_WORKERS = max(1, int(os.environ.get("RECITE_TTS_WORKERS", "3")))
+
 # Frontend build dir (repo/../frontend/dist relative to this file's repo root)
 REPO_ROOT = Path(__file__).resolve().parents2 if False else Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"

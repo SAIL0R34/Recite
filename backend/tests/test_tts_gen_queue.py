@@ -239,10 +239,10 @@ def test_queue_survives_a_failing_section(book, monkeypatch):
     gen_queue.start()
     m = _wait_until_done(book, timeout=60)
     assert sorted(s["status"] for s in m["sections"]) == ["failed", "ready"]
-    assert gen_queue._WORKER.is_alive()
+    assert any(t.is_alive() for t in gen_queue._WORKERS)
 
 
 def test_start_is_idempotent():
     gen_queue.start()
     gen_queue.start()
-    assert gen_queue._WORKER.is_alive()
+    assert any(t.is_alive() for t in gen_queue._WORKERS)
