@@ -76,3 +76,18 @@ def test_source_file_untouched():
         before = (os.path.getmtime(path), os.path.getsize(path))
         epub.extract(path)
         assert (os.path.getmtime(path), os.path.getsize(path)) == before
+
+
+def test_small_front_docs_do_not_refuse():
+    """Text-less colophon and tiny cover/contents are warnings, not refusal."""
+    tmp, path = _in_dir("smalldocs.epub")
+    with tmp:
+        fix.write_small_docs_epub(path)
+        ex = epub.extract(path)
+        assert ex.title == "Small Harbor"
+        assert ex.warnings == ["image-only pages skipped: 2"]
+        # prose marked up as bare <div>s must survive the walk
+        ch1 = [s for s in ex.sections if s.title == "Chapter One"][0]
+        assert len(ch1.paragraphs) == 3
+        assert ch1.paragraphs[0].text.startswith("The harbor master")
+        assert ch1.paragraphs[0].page == 4      # spine ordinal of ch1

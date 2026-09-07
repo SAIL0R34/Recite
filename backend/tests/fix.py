@@ -354,6 +354,180 @@ def write_image_only_epub(path: str) -> str:
     return _zip_epub(path, ["plates", "plates", "plates"])
 
 
+# ------------------------------------------------- refusal fixtures: layout
+
+CAPTION_LINES = (
+    "Terraces cascade toward a private garden reserved for residents.",
+    "The atrium doubles as a gallery for commissioned light works.",
+    "A lacquered stair anchors the hall beneath a woven pendant.",
+    "Kitchen islands give way to worktops of honed basalt stone.",
+    "Framed prints keep the reading corner quiet and uncluttered.",
+    "Sunlight pools on terrazzo floors through arched bay windows.",
+    "A single lounge chair sets the tone for the entire mezzanine.",
+    "Courtyard planters borrow their palette from the coastal bed.",
+    "Millwork hides every appliance behind seamless walnut panels.",
+    "Stair balusters repeat at a rhythm borrowed from the facade.",
+    "Brass fixtures warm the otherwise monochrome gallery bath.",
+    "A reading ledge faces the water beneath deep window reveals.",
+)
+
+HEADLINES = (
+    "Staircases That Steal the Show",
+    "Inside the Glass Courtyard House",
+    "A Kitchen Rebuilt Around Light",
+    "The Quiet Radicalism of Plain Rooms",
+    "Six Rooms That Redefine the Hallway",
+    "Where Stone Meets Water on the Coast",
+    "A Library Carved From Old Timber",
+    "The Terrace Season Begins Early",
+    "Hand-Thrown Tile Finds Its Moment",
+    "Two Windows and a Very Long Table",
+    "The Corridor as a Picture Frame",
+    "Rooflines Broken Up by Dormers",
+    "A Garden Held Behind Low Walls",
+    "The Return of the Painted Ceiling",
+)
+
+DECK = ("Decks and captions carry this month's tours in condensed form,",
+        "while the feature itself lives entirely inside the photography.")
+
+
+def write_caption_pdf(path: str) -> str:
+    """12 pages of isolated caption fragments: high enough average, no prose."""
+    doc = pymupdf.open()
+    for page in range(12):
+        p = doc.new_page(width=PAGE_W, height=PAGE_H)
+        for i in range(6):
+            line = CAPTION_LINES[(page * 6 + i) % len(CAPTION_LINES)]
+            p.insert_text((70, 120 + i * 90), line, fontsize=11)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def write_headline_pdf(path: str) -> str:
+    """14 magazine-layout pages: headline, deck, caption, credit only."""
+    doc = pymupdf.open()
+    for page in range(14):
+        p = doc.new_page(width=PAGE_W, height=PAGE_H)
+        p.insert_text((60, 140), HEADLINES[page % len(HEADLINES)], fontsize=22)
+        p.insert_text((60, 300), DECK, fontsize=12)
+        p.insert_text((60, 322), CAPTION_LINES[page % len(CAPTION_LINES)],
+                      fontsize=12)
+        p.insert_text((60, 470), DECK[:52], fontsize=10)
+        p.insert_text((60, 492), CAPTION_LINES[(page + 5) % len(CAPTION_LINES)],
+                      fontsize=10)
+        p.insert_text((60, 700), "Photograph by A. Studio, issue twelve",
+                      fontsize=9)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+# --------------------------------------------- EPUB with tiny front docs
+
+SMALLDOCS_OPF = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="id">recite-fixture-smalldocs</dc:identifier>
+    <dc:title>Small Harbor</dc:title>
+    <dc:creator>Ada Mireille</dc:creator>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>
+    <item id="cover" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>
+    <item id="colophon" href="Text/colophon.xhtml" media-type="application/xhtml+xml"/>
+    <item id="toc" href="Text/toc.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="Text/ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="Text/ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="cover"/><itemref idref="colophon"/>
+         <itemref idref="toc"/><itemref idref="ch1"/><itemref idref="ch2"/></spine>
+</package>
+"""
+
+SMALLDOCS_COVER = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html><head><title>Cover</title></head>
+<body>
+<div class="titleblock">
+<h1>Small Harbor</h1>
+<div class="author">Ada Mireille</div>
+</div>
+</body></html>
+"""
+
+SMALLDOCS_COLOPHON = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html><head><title>Colophon</title></head>
+<body>
+<div class="plate"><img src="plate.png" alt="printer's device"/></div>
+</body></html>
+"""
+
+SMALLDOCS_TOC = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html><head><title>Contents</title></head>
+<body>
+<h1>Contents</h1>
+<p>Two chapters and a short harbor, nothing more.</p>
+</body></html>
+"""
+
+SMALLDOCS_CH1 = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html><head><title>One</title></head>
+<body>
+<h2 id="chapter-one">Chapter One</h2>
+<div class="s18">The harbor master kept his ledger in a drawer that smelled of
+salt and cedar, and every autumn he rewrote the same three pages about the
+storm that took the lightship off the point.</div>
+<div class="s18">Boats came in on the tide and went out on it again, and the
+water never once kept what the town entrusted to it, which the gulls seemed to
+find very funny and the dogs not at all.</div>
+<div class="s18">She learned the names of the moored boats before her name was
+properly known, and by the first frost she could tell the season by the ropes
+alone, stiff or soft according to the month.</div>
+</body></html>
+"""
+
+SMALLDOCS_CH2 = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html><head><title>Two</title></head>
+<body>
+<h2 id="chapter-two">Chapter Two</h2>
+<div class="s18">Winter closed the cafe and opened the wind, so the street
+learned to walk indoors, and the library took the whole town into its two warm
+rooms without ever mentioning the number of coats.</div>
+<div class="s18">When spring returned the harbor master found a fourth page
+waiting in his drawer, written in a hand he did not know, describing a storm
+that had not happened yet.</div>
+</body></html>
+"""
+
+_SMALPDOCS = {
+    "cover": SMALLDOCS_COVER, "colophon": SMALLDOCS_COLOPHON,
+    "toc": SMALLDOCS_TOC, "ch1": SMALLDOCS_CH1, "ch2": SMALLDOCS_CH2,
+}
+
+
+def write_small_docs_epub(path: str) -> str:
+    """Text-less colophon plus tiny cover/contents around real chapters.
+
+    Prose is marked up as leaf <div>s (common in produced EPUBs), and the
+    book-wide text floor must not be diluted by the small front documents.
+    """
+    with zipfile.ZipFile(path, "w") as z:
+        info = zipfile.ZipInfo("mimetype")
+        info.compress_type = zipfile.ZIP_STORED
+        z.writestr(info, "application/epub+zip")
+        z.writestr("META-INF/container.xml", EPUB_CONTAINER)
+        z.writestr("OEBPS/content.opf", SMALLDOCS_OPF)
+        for name, html in _SMALPDOCS.items():
+            z.writestr(f"OEBPS/Text/{name}.xhtml", html)
+    return path
+
+
 def write_unsupported(path: str) -> str:
     Path(path).write_text("not a book")
     return path

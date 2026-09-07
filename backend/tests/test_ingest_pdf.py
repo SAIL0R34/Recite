@@ -117,3 +117,32 @@ def test_source_file_untouched():
         before = (os.path.getmtime(path), os.path.getsize(path))
         pdf.extract(path)
         assert (os.path.getmtime(path), os.path.getsize(path)) == before
+
+
+def test_caption_document_is_refused():
+    """Isolated caption fragments must not masquerade as a readable book."""
+    tmp, path = _in_dir("captions.pdf")
+    with tmp:
+        fix.write_caption_pdf(path)
+        try:
+            pdf.extract(path)
+        except IngestError as exc:
+            assert str(exc).startswith("image-heavy")
+            assert getattr(exc, "warnings", None)
+            assert any("median" in w for w in exc.warnings)
+        else:
+            raise AssertionError("caption-only pdf must raise IngestError")
+
+
+def test_headline_layout_is_refused():
+    """Magazine headline/deck layouts are refused despite a fair average."""
+    tmp, path = _in_dir("headlines.pdf")
+    with tmp:
+        fix.write_headline_pdf(path)
+        try:
+            pdf.extract(path)
+        except IngestError as exc:
+            assert str(exc).startswith("image-heavy")
+            assert any("paragraph blocks" in w for w in exc.warnings)
+        else:
+            raise AssertionError("headline-layout pdf must raise IngestError")

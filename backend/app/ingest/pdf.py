@@ -35,8 +35,10 @@ HEADING_SIZE_FACTOR = 1.3     # line size >= 1.3x median -> heading candidate
 SHORT_LINE_RATIO = 0.85       # a paragraph ends on a line shorter than this
 SPARSE_PAGE_CHARS = 20        # a page with fewer chars counts as image-only
 IMAGE_HEAVY_MIN_CHARS = 200   # avg chars/page below this -> refuse
-SPARSE_PAGE_STRONG = 800      # page-level bar used by the ratio rule
-IMAGE_HEAVY_RATIO = 0.80      # share of weak pages that refuses the book
+MEDIAN_PAGE_MIN = 600         # median page chars below this -> suspect
+PARAGRAPH_BLOCK_CHARS = 600   # a layout block this long is paragraph-scale
+PARAGRAPH_COVERAGE_MIN = 0.20 # share of text in paragraph-scale blocks
+MIN_PAGES_FOR_SHAPE = 10      # shape rules judge books of at least this size
 FORMULA_DENSITY = 0.25        # >25% math symbols -> formula
 MONO_RATIO = 0.60             # >60% monospaced chars -> code
 SENTENCE_FINAL = ".!?"
@@ -91,6 +93,7 @@ class _Page:
     height: float
     lines: List[_Line] = field(default_factory=list)
     chars: int = 0
+    block_chars: List[int] = field(default_factory=list)
 
     def in_band(self, line: _Line) -> bool:
         band = self.height * HEADER_BAND
@@ -230,9 +233,14 @@ def _collect_pages(doc) -> List[_Page]:
         pg = _Page(number=pno + 1, width=float(rect.width or 1),
                    height=float(rect.height or 1))
         lines: List[_Line] = []
+        block_chars: List[int] = []
         for block in _page_blocks(page):
-            lines.extend(_block_lines(block))
+            blines = _block_lines(block)
+            block_chars.append(sum(len(re.sub(r"\s+", "", ln.text))
+                                   for ln in blines))
+            lines.extend(blines)
         pg.lines = lines
+        pg.block_chars = block_chars
         pg.chars = sum(len(re.sub(r"\s+", "", ln.text)) for ln in lines)
         pages.append(pg)
     return pages
@@ -248,16 +256,21 @@ def _check_extractable(pages: List[_Page]) -> List[str]:
     if avg < IMAGE_HEAVY_MIN_CHARS:
         _fail(_refusal_message(_ranges(sparse) or "1"),
               [f"image-heavy: average {int(avg)} chars per page"])
-    # A document-average that passes can still hide a magazine: captions and
-    # ads lift the mean while almost no page carries real prose. When more
-    # than IMAGE_HEAVY_RATIO of the pages hold barely readable amounts of
-    # text the document is image-heavy as a whole. Only applies to books
-    # long enough for the ratio to mean something.
-    weak = [p.number for p in pages if p.chars < SPARSE_PAGE_STRONG]
-    if len(pages) >= 10 and len(weak) / len(pages) > IMAGE_HEAVY_RATIO:
-        _fail(_refusal_message(_ranges(weak) or "1"),
-              [f"image-heavy: {len(weak)} of {len(pages)} pages image-only "
-               f"(avg {int(avg)} chars per page)"])
+    # A passing average can still hide a magazine: captions and ad copy are
+    # short isolated lines that lift the mean, while real prose forms long
+    # multi-line blocks. On books long enough for shape to mean something,
+    # a low median page density combined with almost no paragraph-scale
+    # blocks is an image-heavy layout.
+    if len(pages) >= MIN_PAGES_FOR_SHAPE:
+        med = median(p.chars for p in pages)
+        big = sum(sum(c for c in p.block_chars if c >= PARAGRAPH_BLOCK_CHARS)
+                  for p in pages)
+        coverage = big / total if total else 0.0
+        if med < MEDIAN_PAGE_MIN and coverage < PARAGRAPH_COVERAGE_MIN:
+            weak = [p.number for p in pages if p.chars < MEDIAN_PAGE_MIN]
+            _fail(_refusal_message(_ranges(weak) or "1"),
+                  [f"image-heavy: median {int(med)} chars per page, "
+                   f"{int(coverage * 100)}% of text in paragraph blocks"])
     warnings: List[str] = []
     if sparse and len(sparse) < len(pages):
         warnings.append(f"image-only pages skipped: {_ranges(sparse)}")
