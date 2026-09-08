@@ -43,7 +43,8 @@ if DIST.exists() and (DIST / "index.html").exists():
 
     @app.get("/")
     def index():
-        return FileResponse(DIST / "index.html")
+        return FileResponse(DIST / "index.html",
+                            headers={"Cache-Control": "no-cache"})
 
     @app.get("/{path:path}")
     async def spa_fallback(path: str, request: Request):
@@ -52,7 +53,8 @@ if DIST.exists() and (DIST / "index.html").exists():
         f = (DIST / path).resolve()
         if f.is_file() and str(f).startswith(str(DIST.resolve())):
             return FileResponse(f)
-        return FileResponse(DIST / "index.html")
+        return FileResponse(DIST / "index.html",
+                            headers={"Cache-Control": "no-cache"})
 
 
 if __name__ == "__main__":

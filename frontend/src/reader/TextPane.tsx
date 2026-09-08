@@ -309,15 +309,21 @@ function SectionView({
   sectionStartMs: number
   hlIndex: Map<string, Map<number, Highlight>>
 }) {
+  // A section with ten thousand chunks (extraction went wrong once) must
+  // still open: render a growing window instead of freezing the tab.
+  const CAP = 300
+  const [limit, setLimit] = useState(CAP)
+  useEffect(() => setLimit(CAP), [manSection.idx])
+  const more = manSection.chunks.length > limit
   const chunksByPara = useMemo(() => {
     const m = new Map<number, ManifestChunk[]>()
-    for (const c of manSection.chunks) {
+    for (const c of more ? manSection.chunks.slice(0, limit) : manSection.chunks) {
       const arr = m.get(c.para)
       if (arr) arr.push(c)
       else m.set(c.para, [c])
     }
     return m
-  }, [manSection])
+  }, [manSection, more, limit])
 
   const generating = manSection.status !== 'ready'
 
@@ -336,7 +342,13 @@ function SectionView({
           )}
         </h2>
       )}
-      {docSection.paragraphs.map((p) => (
+      {(() => {
+        let lastPara = -1
+        chunksByPara.forEach((cs, k) => {
+          if (cs.length) lastPara = Math.max(lastPara, k)
+        })
+        return docSection.paragraphs.slice(0, lastPara + 1)
+      })().map((p) => (
         <ParagraphView
           key={p.idx}
           para={p}
@@ -346,6 +358,14 @@ function SectionView({
           marks={hlIndex.get(`${docSection.idx}:${p.idx}`)}
         />
       ))}
+      {more && (
+        <button
+          className="btn btn-sm"
+          onClick={() => setLimit((l) => l + CAP * 2)}
+        >
+          … {(manSection.chunks?.length ?? 0) - limit} more chunks — show more
+        </button>
+      )}
     </section>
   )
 }

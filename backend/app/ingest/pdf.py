@@ -520,17 +520,73 @@ def _sections_by_headings(paras: Sequence[_Para]) -> List[Section]:
     return [_make_section(i, title, items) for i, (title, items) in enumerate(filled)]
 
 
+_PURE_MARKER = re.compile(
+    r"^(CHAPTER|Chapter|chapter|PART|Part|UNIT|Unit|LESSON|Lesson)"
+    r"\s+(?:[0-9]+|[IVXLC]{1,6})[.:]?\s*$")
+
+
+def _sections_by_markers(paras: Sequence[_Para]) -> List[Section]:
+    """Textbook fallback: 'CHAPTER 7'-style lines that open a page delimit
+    chapters. For books with a uniform display font, where the font-size
+    heading detector degenerates into one giant section. TOC repeats are
+    safe: the marker must be the paragraph opening its page."""
+    starts = [i for i, p in enumerate(paras)
+              if len(p.text.strip()) <= 40 and len(p.lines) == 1
+              and _PURE_MARKER.match(p.text.strip())]
+    if len(starts) < 3:
+        return []
+    sections: List[Section] = []
+    lead = [p for p in paras[:starts[0]] if p.text.strip()]
+    if lead:                       # front matter before the first chapter
+        sections.append(_make_section(0, None, lead))
+    for n, i in enumerate(starts):
+        stop = starts[n + 1] if n + 1 < len(starts) else len(paras)
+        title = paras[i].text.strip().splitlines()[0].title()
+        items = [p for p in paras[i + 1:stop] if p.text.strip()]
+        # a short title line right below the marker is the chapter title
+        if (items and len(items[0].text.strip()) <= 60
+                and not items[0].text.strip().endswith(".")
+                and len(items[0].lines) == 1):
+            title = f"{title} — {items[0].text.strip()}"
+            items = items[1:]
+        if items:
+            sections.append(_make_section(len(sections), title, items))
+    return sections
+
+
+def _degenerate(sections: List[Section]) -> bool:
+    """One section holding >60% of a big book means the split failed."""
+    total = sum(len(s.paragraphs) for s in sections)
+    if total <= 150:
+        return False
+    biggest = max((len(s.paragraphs) for s in sections), default=0)
+    return bool(sections) and biggest / total > 0.6
+
+
 def _build_sections(paras: Sequence[_Para], doc) -> Tuple[List[Section], List[str]]:
+    """Sections from the table of contents, else from font-size headings.
+    If either result swallows most of the book in a single section, fall
+    back to page-opening 'CHAPTER N' marker lines — uniform-typeface
+    textbooks defeat both of the first two heuristics, TOC alignment
+    included."""
     warnings: List[str] = []
+    sections: List[Section] = []
     if _toc_entries(doc):
         sections, broken = _sections_from_toc(paras, doc)
-        if not broken:
+        if broken:
+            warnings.append("table of contents pages did not line up with "
+                            "text pages; text kept in reading order")
+            sections = []
+        else:
             for i, s in enumerate(sections):
                 s.idx = i
-            return sections, warnings
-        warnings.append("table of contents pages did not line up with text pages; "
-                        "text kept in reading order")
-    sections = _sections_by_headings(paras)
+    if not sections:
+        sections = _sections_by_headings(paras)
+    if _degenerate(sections):
+        markers = _sections_by_markers(paras)
+        if len(markers) >= 3:
+            warnings.append("sections split on chapter marker lines")
+            return markers, warnings
     if not any(s.title for s in sections):
         warnings.append("no table of contents or detectable headings; "
                         "single untitled section")
