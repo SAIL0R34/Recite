@@ -190,8 +190,17 @@ export default function TransportBar({
         ))}
       </div>
 
-      {/* row 3 — transport */}
-      <div className="mt-1 flex items-center gap-1.5 sm:gap-2">
+      {/* row 3 — transport: trio centred, utilities right-anchored */}
+      <div className="relative mt-1 flex items-center justify-center gap-2 sm:gap-3">
+        {notReady && (
+          <button
+            className="btn btn-sm absolute left-0"
+            onClick={() => usePlayerStore.getState().nextReadySection()}
+            title="Jump to next ready section"
+          >
+            next ready →
+          </button>
+        )}
         <button
           className="skip-btn"
           onClick={() => usePlayerStore.getState().seekBy(-10_000)}
@@ -219,35 +228,27 @@ export default function TransportBar({
           <span aria-hidden>10</span>
         </button>
 
-        {notReady && (
+        <div className="absolute right-0 flex items-center gap-1.5">
+          <SpeedPopover rate={rate} />
           <button
-            className="btn btn-sm"
-            onClick={() => usePlayerStore.getState().nextReadySection()}
-            title="Jump to next ready section"
+            className="btn btn-ghost"
+            onClick={onToggleBookmarks}
+            title="Bookmarks (B to pin)"
+            aria-label="bookmarks"
           >
-            next ready →
+            🔖
           </button>
-        )}
-
-        <span className="flex-1" />
-        <SpeedPopover rate={rate} />
-        <button
-          className="btn btn-ghost"
-          onClick={onToggleBookmarks}
-          title="Bookmarks (B to pin)"
-          aria-label="bookmarks"
-        >
-          🔖
-        </button>
-        <button
-          className="btn btn-ghost"
-          onClick={cycleTheme}
-          title="Theme"
-          aria-label="cycle theme"
-        >
-          ◐
-        </button>
+          <button
+            className="btn btn-ghost"
+            onClick={cycleTheme}
+            title="Theme"
+            aria-label="cycle theme"
+          >
+            ◐
+          </button>
+        </div>
       </div>
     </div>
   )
 }
+

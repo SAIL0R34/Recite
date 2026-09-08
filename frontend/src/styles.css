@@ -368,3 +368,23 @@ input[type='range'].speed {
 .skip-btn:focus-visible {
   outline: 2px solid var(--ring);
 }
+
+/* ---- auto-hiding transport --------------------------------------------- */
+.transport-shell {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 30;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+.transport-hidden {
+  transform: translateY(115%);
+  opacity: 0;
+  pointer-events: none;
+}
+/* never slide away out from under a control being used */
+.transport-shell:focus-within {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}

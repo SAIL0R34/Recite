@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { BookDocument, Manifest, Progress } from '../types'
 import {
@@ -186,6 +186,29 @@ export default function ReaderView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, !!manifest])
 
+  // ---- auto-hiding transport --------------------------------------------
+  // The bar slides away after a few idle seconds; any tap, key or scroll
+  // reveals it again (a focused control pins it via :focus-within).
+  const [barVisible, setBarVisible] = useState(true)
+  const barTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pokeBar = useCallback(() => {
+    setBarVisible(true)
+    if (barTimer.current) clearTimeout(barTimer.current)
+    barTimer.current = setTimeout(() => setBarVisible(false), 4500)
+  }, [])
+  const pauseBarHide = useCallback(() => {
+    if (barTimer.current) clearTimeout(barTimer.current)
+  }, [])
+  useEffect(() => {
+    const events = ['pointerdown', 'keydown', 'wheel'] as const
+    events.forEach((e) => window.addEventListener(e, pokeBar, { passive: true }))
+    pokeBar()
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, pokeBar))
+      if (barTimer.current) clearTimeout(barTimer.current)
+    }
+  }, [pokeBar])
+
   // ---- progress persistence ----------------------------------------------
   const dirtyRef = useRef(false)
   useEffect(() => {
@@ -368,10 +391,16 @@ export default function ReaderView() {
       </div>
 
       {timeline && (
-        <TransportBar
-          timeline={timeline}
-          onToggleBookmarks={() => setDrawerOpen((v) => !v)}
-        />
+        <div
+          className={`transport-shell${barVisible ? '' : ' transport-hidden'}`}
+          onPointerEnter={pauseBarHide}
+          onPointerLeave={pokeBar}
+        >
+          <TransportBar
+            timeline={timeline}
+            onToggleBookmarks={() => setDrawerOpen((v) => !v)}
+          />
+        </div>
       )}
     </div>
   )
