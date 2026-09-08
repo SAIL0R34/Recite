@@ -111,6 +111,28 @@ export default function ReaderView() {
     void useHighlightStore.getState().refresh(bookId)
   }, [bookId])
 
+  // Chapter jump: scroll the newly-rendered section to the top once React
+  // has committed it (a beat of timeout is enough for the ±1 window).
+  const jump = store.jump
+  useEffect(() => {
+    if (!jump) return
+    const t = setTimeout(() => {
+      document
+        .querySelector(`[data-section="${jump.idx}"]`)
+        ?.scrollIntoView({ block: 'start' })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [jump])
+
+  // The TTS window follows the cursor (budget + grace live server-side);
+  // idempotent and cheap for fully-ready books.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void requestGeneration(bookId, store.sectionIdx).catch(() => undefined)
+    }, 2500)
+    return () => clearTimeout(t)
+  }, [store.sectionIdx])
+
   // ---- SSE + polling fallback -------------------------------------------
   useEffect(() => {
     if (!manifest) return

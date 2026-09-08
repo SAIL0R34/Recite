@@ -54,7 +54,7 @@ books/<book_id>/
 | `/api/books/{id}/bookmarks` | GET/POST, `DELETE …/{bid}` | |
 | `/api/settings` | GET/PUT | voice, theme, fontSize, lineHeight, fontFamily, highlightStyle, alignment |
 | `/api/books/{id}/events` | GET SSE | `section {idx,status}`, `generation {done}` |
-| `/api/books/{id}/generate` | POST | `?boost=N` lane-1 prioritize section N |
+| `/api/books/{id}/generate` | POST | `?boost=N&window=CHUNKS`: queue the audio window around section N — lane 1 = N+successor, lane 2 = forward until chunk budget; out-of-window queued work goes cold for `RECITE_TTS_GRACE` s, then releases (stays `pending`, nothing lost) |
 
 ## Player invariants
 

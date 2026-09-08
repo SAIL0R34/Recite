@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { usePlayerStore } from '../stores/playerStore'
 import type { Timeline } from '../player/timeline'
 
-/** Sections/chapters dropdown — jumps go through the single seek path. */
-export default function ChapterMenu({
-  timeline,
-}: {
-  timeline: Timeline
-}) {
+/**
+ * Sections dropdown. Every section is clickable — reading never waits for
+ * audio. Ready sections jump-and-seek; pending ones move the reading cursor
+ * and boost their audio (see playerStore.jumpToSection).
+ */
+export default function ChapterMenu({ timeline }: { timeline: Timeline }) {
   const [open, setOpen] = useState(false)
   const sectionIdx = usePlayerStore((s) => s.sectionIdx)
   const entries = timeline.entries
@@ -34,15 +34,18 @@ export default function ChapterMenu({
               }`}
               onClick={() => {
                 setOpen(false)
-                if (e.ready) usePlayerStore.getState().seek(e.startMs)
+                usePlayerStore.getState().jumpToSection(e.section)
               }}
-              disabled={!e.ready}
-              title={e.ready ? undefined : 'generating…'}
+              title={
+                e.ready
+                  ? 'jump to chapter'
+                  : `${e.status} — jump anyway; its audio gets priority`
+              }
             >
               {e.title || `Section ${e.section + 1}`}
               {e.status !== 'ready' && (
                 <span className="ml-1 text-xs" style={{ color: 'var(--muted)' }}>
-                  · {e.status}
+                  · {e.status === 'pending' ? '⏳ pending' : e.status}
                 </span>
               )}
             </button>

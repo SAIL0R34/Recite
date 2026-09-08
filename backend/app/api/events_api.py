@@ -31,10 +31,13 @@ async def book_events(book_id: str):
 
 
 @router.post("/{book_id}/generate")
-async def generate(book_id: str, boost: int | None = None):
+async def generate(book_id: str, boost: int | None = None,
+                   window: int | None = None):
+    """Queue the audio window around `boost` (defaults: first pending)."""
     if not db.get_book(book_id):
         raise HTTPException(404, "no such book")
     from ..tts import gen_queue
     await asyncio.to_thread(gen_queue.request_generation, book_id,
-                            [boost] if boost is not None else None)
+                            [boost] if boost is not None else None,
+                            window)
     return {"ok": True}

@@ -14,7 +14,7 @@ import {
   type Timeline,
 } from '../player/timeline'
 import { engine } from '../player/engine'
-import { getSectionTimings } from '../api/client'
+import { getSectionTimings, requestGeneration } from '../api/client'
 
 export interface PlayerState {
   bookId: string | null
@@ -48,6 +48,8 @@ export interface PlayerState {
   toggle: () => void
   setRate: (r: number) => void
   seek: (globalMs: number) => void
+  jumpToSection: (idx: number) => void
+  jump: { idx: number; nonce: number } | null
   seekBy: (deltaMs: number) => void
   nextSection: () => void
   prevSection: () => void
@@ -69,6 +71,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   playing: false,
   rate: 1,
   sectionIdx: 0,
+  jump: null,
   followMode: true,
   percent: 0,
 
@@ -131,6 +134,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   seek: (globalMs) => {
     set({ followMode: true })
     void engine.seekToGlobalMs(globalMs)
+  },
+
+  // Chapter jump: reading first, audio second. Ready section -> a plain seek.
+  // Otherwise pause, move the reading cursor, and boost this section's audio
+  // (lane 1, server-side) — text must never wait for TTS. ReaderView watches
+  // `jump` and scrolls once the section has rendered.
+  jumpToSection: (idx) => {
+    const e = get().timeline?.byIndex[idx]
+    set({
+      followMode: true,
+      jump: { idx, nonce: (get().jump?.nonce ?? 0) + 1 },
+    })
+    if (e?.ready) {
+      get().seek(e.startMs)
+      return
+    }
+    if (get().playing) get().pause()
+    set({ sectionIdx: idx })
+    const id = get().bookId
+    if (id) void requestGeneration(id, idx).catch(() => undefined)
   },
   seekBy: (deltaMs) => {
     const g = get().globalMs + deltaMs

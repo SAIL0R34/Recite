@@ -51,6 +51,7 @@ def _reset_queue():
             break
     gen_queue._queued.clear()
     gen_queue._live.clear()
+    gen_queue._COLD.clear()
     gen_queue._active_book = None
 
 
@@ -142,12 +143,12 @@ def test_second_section_offsets(book, stub_synth):
 
 
 def test_request_generation_runs_to_ready(book, stub_synth):
-    gen_queue.request_generation(book, boost_sections=[1])
+    # windowed queue: cursor at 0 -> boost 0+1, nothing exists behind it
+    gen_queue.request_generation(book, boost_sections=[0])
     gen_queue.start()
     m = _wait_until_done(book)
     assert [s["status"] for s in m["sections"]] == ["ready", "ready"]
-    # boost list first: lane 1 ran section 1 (and its successor) before 0
-    assert (config.book_dir(book) / "audio" / "section-001.mp3").exists()
+    assert (config.book_dir(book) / "audio" / "section-000.mp3").exists()
 
 
 def test_events_are_published(book, stub_synth):
@@ -246,3 +247,63 @@ def test_start_is_idempotent():
     gen_queue.start()
     gen_queue.start()
     assert any(t.is_alive() for t in gen_queue._WORKERS)
+
+
+# ----------------------------------------------------------- window policy
+def _six_sections(book_id):
+    """6 sections x 2 chunks (small) — enough to show budget cut-lines."""
+    sections = [
+        {"idx": i, "title": f"S{i}", "chunks": [
+            {"idx": i * 10 + k, "para": k, "sentence_range": [0, 1],
+             "text": f"Section {i} chunk {k} has words in it."}
+            for k in range(2)]}
+        for i in range(6)
+    ]
+    config.book_dir(book_id).mkdir(parents=True)
+    manifestio.init_manifest(book_id, sections, "kokoro-test", "af_heart")
+    return book_id
+
+
+def _queued_ids():
+    return {it[3] for it in gen_queue._QUEUE.queue}
+
+
+def test_window_bounds_lane2(books):
+    gen_queue.start = lambda n=None: None   # inspect queue without burning items
+    b = _six_sections("wnd")
+    gen_queue.request_generation(b, boost_sections=[1], window_chunks=3)
+    # lane 1 = boost+successor; lane 2 = next sections until the chunk budget
+    # is spent (2 each); the tail is never queued
+    assert _queued_ids() == {1, 2, 3, 4}
+
+
+def test_cursor_move_demotes_to_cold_then_repromotes(books):
+    gen_queue.start = lambda n=None: None
+    b = _six_sections("grace")
+    gen_queue.request_generation(b, boost_sections=[0], window_chunks=3)
+    assert _queued_ids() == {0, 1, 2, 3}
+    gen_queue.request_generation(b, boost_sections=[4], window_chunks=3)
+    assert _queued_ids() >= {4, 5}
+    # out-of-window work was demoted, not lost
+    assert gen_queue._COLD.get((b, 0)) is not None
+    prios = {it[3]: it[0] for it in gen_queue._QUEUE.queue}
+    assert prios[0] == 2
+    # jumping back re-promotes it into the hot window
+    gen_queue.request_generation(b, boost_sections=[0], window_chunks=5)
+    assert (b, 0) not in gen_queue._COLD
+    prios = {it[3]: it[0] for it in gen_queue._QUEUE.queue}
+    assert prios[0] in (0, 1)
+
+
+def test_cold_item_dropped_after_grace(books):
+    gen_queue.start = lambda n=None: None
+    b = _six_sections("expire")
+    gen_queue.request_generation(b, boost_sections=[0], window_chunks=5)
+    assert (b, 3) in gen_queue._queued
+    gen_queue._COLD[(b, 3)] = 0.0            # pretend grace lapsed
+    assert gen_queue._expired_cold((b, 3))   # the worker's dequeue guard
+    assert (b, 3) not in gen_queue._queued
+    assert (b, 3) not in gen_queue._COLD
+    # ...and it stays `pending` in the manifest — releasable, never lost
+    m = manifestio.load(b)
+    assert m["sections"][3]["status"] == "pending"

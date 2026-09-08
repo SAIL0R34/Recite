@@ -37,6 +37,11 @@ PORT = int(os.environ.get("RECITE_PORT", "8744"))
 # KPipeline, so 3 workers cost ~3x model memory but finish lane-2 sections
 # ~3x faster on an 8+ core machine.
 TTS_WORKERS = max(1, int(os.environ.get("RECITE_TTS_WORKERS", "3")))
+# generation window: chunks of *audio* kept ready past the reading cursor
+# (a chunk ~= 15-20 s of speech) and how long out-of-window queued sections
+# linger in the cold tier before being dropped from the queue
+TTS_WINDOW_CHUNKS = int(os.environ.get("RECITE_TTS_WINDOW_CHUNKS", "80"))
+TTS_GRACE_S = float(os.environ.get("RECITE_TTS_GRACE", "480"))
 
 # Frontend build dir (repo/../frontend/dist relative to this file's repo root)
 REPO_ROOT = Path(__file__).resolve().parents2 if False else Path(__file__).resolve().parents[2]

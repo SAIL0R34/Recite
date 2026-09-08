@@ -44,6 +44,13 @@ _queued: set = set()  # (book_id, idx) queued, not yet started
 _active_book: Optional[str] = None
 _SEQ = 0
 
+# Window policy (see request_generation): lane 2 never extends beyond
+# config.TTS_WINDOW_CHUNKS worth of audio past the reader's cursor; work that
+# falls out of the window is demoted to a cold tier (_COLD, priority 2, runs
+# only when nothing hotter waits) for config.TTS_GRACE_S, then dropped at
+# dequeue. The section stays `pending` in the manifest — nothing is lost.
+_COLD: dict = {}  # (book_id, idx) -> expire_ts
+
 
 # ----------------------------------------------------------------- plumbing
 def _publish(book_id: str, event: str, data: dict) -> None:
@@ -91,11 +98,17 @@ def start(n: Optional[int] = None) -> None:
     log.info("generation queue running with %d worker(s)", live)
 
 
-def request_generation(book_id: str, boost_sections: Optional[List[int]] = None) -> int:
-    """Queue every unfinished section of `book_id`; returns how many were added.
+def request_generation(book_id: str, boost_sections: Optional[List[int]] = None,
+                       window_chunks: Optional[int] = None) -> int:
+    """Queue the sections around the reader's cursor; returns how many were added.
 
-    `boost_sections` (the section the reader is on) goes first together with the
-    section after it, so playback is instant while the rest trickles in.
+    Lane 1 (priority 0) is each boost section plus its successor, so the audio
+    at the cursor exists within seconds. Lane 2 (priority 1) extends forward in
+    document order but NEVER past the window: at most `window_chunks` worth of
+    remaining sections. The tail of the book is not queued — as the cursor
+    advances, the next call slides the window. Anything from an earlier window
+    that is now out of range is demoted to the cold tier for one grace period
+    (jumping straight back re-promotes it), then dropped.
     """
     manifest = manifestio.load(book_id)
     if manifest is None:
@@ -104,6 +117,7 @@ def request_generation(book_id: str, boost_sections: Optional[List[int]] = None)
 
     sections = sorted(manifest.get("sections", []), key=lambda s: s.get("idx") or 0)
     by_idx = {s.get("idx"): s for s in sections}
+    budget = window_chunks if window_chunks is not None else config.TTS_WINDOW_CHUNKS
 
     lane1: List[int] = []
     for idx in boost_sections or []:
@@ -111,10 +125,26 @@ def request_generation(book_id: str, boost_sections: Optional[List[int]] = None)
             s = by_idx.get(candidate)
             if candidate not in lane1 and _needs(book_id, s):
                 lane1.append(candidate)
-    lane2 = [s.get("idx") for s in sections
-             if s.get("idx") not in lane1 and _needs(book_id, s)]
 
+    # lane 2: following pending sections inside the chunk budget
+    lane2: List[int] = []
+    spent = 0
+    cursor = max(boost_sections) if boost_sections else None
+    for s in sections:
+        idx = s.get("idx")
+        if cursor is not None and idx is not None and idx <= cursor:
+            continue
+        if idx in lane1 or not _needs(book_id, s):
+            continue
+        n = len(s.get("chunks") or ())
+        lane2.append(idx)
+        spent += n
+        if spent >= budget:
+            break                            # include the straddling section, stop
+
+    target = set(lane1) | set(lane2)
     with _LOCK:
+        _defer_outside(book_id, target)      # mutates _QUEUE/_queued/_COLD
         for idx in lane1:
             _enqueue(0, book_id, idx)
         for idx in lane2:
@@ -122,6 +152,62 @@ def request_generation(book_id: str, boost_sections: Optional[List[int]] = None)
         added = len(lane1) + len(lane2)
     start()
     return added
+
+
+def _defer_outside(book_id: str, target: set) -> None:
+    """Demote this book's queued-but-unstarted sections outside `target` to
+    the cold tier (grace); re-promote cold sections back inside it; drop
+    entries whose grace lapsed. Holds _LOCK; caller-enforced."""
+    global _SEQ
+    now = time.monotonic()
+    # expire first so re-queued ids don't linger
+    for key in [k for k, exp in _COLD.items() if k[0] == book_id and exp < now]:
+        _COLD.pop(key)
+
+    kept = []
+    drained = []
+    while True:
+        try:
+            drained.append(_QUEUE.get_nowait())
+        except queue.Empty:
+            break
+    for item in drained:
+        try:
+            pri, seq, b, i = item
+        except (TypeError, ValueError):
+            kept.append(item)
+            continue
+        if b != book_id or (b, i) in _live or i in target:
+            if pri == 2 and b == book_id and i in target:
+                _COLD.pop((b, i), None)
+                pri = 1                      # re-promote into the hot window
+                seq = _next_seq()
+            kept.append((pri, seq, b, i))
+        elif pri == 2:                       # already cold: extend grace once
+            _COLD[(b, i)] = now + config.TTS_GRACE_S
+            kept.append(item)
+        else:                                # hot but out of window -> cold
+            _COLD[(b, i)] = now + config.TTS_GRACE_S
+            kept.append((2, seq, b, i))
+    for item in kept:
+        _QUEUE.put(item)
+
+
+def _expired_cold(key) -> bool:
+    """True (and forgets the entry) if this queued item's grace lapsed.
+    Called under _LOCK at dequeue."""
+    exp = _COLD.get(key)
+    if exp is not None and exp < time.monotonic():
+        _COLD.pop(key)
+        _queued.discard(key)
+        return True
+    return False
+
+
+def _next_seq() -> int:
+    global _SEQ
+    _SEQ += 1
+    return _SEQ
 
 
 def _needs(book_id: str, section: Optional[dict]) -> bool:
@@ -190,6 +276,12 @@ def stop(timeout: float = 5.0) -> bool:
     with _LOCK:
         workers, _WORKERS[:] = list(_WORKERS), []
         _queued.clear()
+        _COLD.clear()
+    while True:  # drain first: a sentinel in a heap of tuples never compares
+        try:
+            _QUEUE.get_nowait()
+        except queue.Empty:
+            break
     for _ in workers:
         _QUEUE.put((_STOP,))
     for t in workers:
@@ -212,6 +304,9 @@ def _worker_loop() -> None:
             _priority, _seq, book_id, idx = item
         except (TypeError, ValueError):
             continue
+        with _LOCK:
+            if _expired_cold((book_id, idx)):
+                continue
         requeued = False
         try:
             requeued = not _await_book_slot(book_id, item=item)
