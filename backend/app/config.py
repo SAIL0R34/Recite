@@ -36,7 +36,7 @@ PORT = int(os.environ.get("RECITE_PORT", "8744"))
 # Concurrent Kokoro worker threads in the generation queue. Each holds its own
 # KPipeline, so 3 workers cost ~3x model memory but finish lane-2 sections
 # ~3x faster on an 8+ core machine.
-TTS_WORKERS = max(1, int(os.environ.get("RECITE_TTS_WORKERS", "3")))
+TTS_WORKERS = max(1, int(os.environ.get("RECITE_TTS_WORKERS", "6")))
 # generation window: chunks of *audio* kept ready past the reading cursor
 # (a chunk ~= 15-20 s of speech) and how long out-of-window queued sections
 # linger in the cold tier before being dropped from the queue

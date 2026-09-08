@@ -17,7 +17,7 @@ import os
 import re
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .. import config, db as _db_module, manifestio
 from . import epub as epub_module, pdf as pdf_module
@@ -84,6 +84,60 @@ def _write_json(path: Path, payload: dict) -> None:
     tmp.replace(path)
 
 
+#: chapter-like titles end the front-matter run
+_CHAPTER_T = re.compile(r"^(chapter|part|book|unit|lesson|section)\b"
+                        r"|^\d+[.:]", re.I)
+MAX_SECTION_WORDS = 2500
+
+
+def _presplit(sections: List["object"],
+              max_words: int = MAX_SECTION_WORDS
+              ) -> Tuple[List["object"], List[int]]:
+    """Split oversized sections into ~max-word parts and mark front matter.
+
+    A chapter the size of a whole window (Power of Logic: ~800 chunks) makes
+    the forward window meaningless — one unit of work is everything. Parts
+    restore the design: the window covers a couple of sections and each one
+    becomes playable within a minute. Sections before the first chapter-like
+    title (preface, TOC, ...) are front matter: text only, no narration.
+    Returns (sections, front_matter_idxs).
+    """
+    out: List["object"] = []
+    for sec in sections:
+        words = sum(len(s.words) for p in sec.paragraphs for s in p.sentences)
+        if words <= max_words:
+            out.append(sec)
+            continue
+        groups: List[List] = []
+        cur, cur_w = [], 0
+        for para in sec.paragraphs:
+            pw = sum(len(s.words) for s in para.sentences)
+            if cur and cur_w + pw > max_words:
+                groups.append(cur)
+                cur, cur_w = [], 0
+            cur.append(para)
+            cur_w += pw
+        if cur:
+            groups.append(cur)
+        for i, grp in enumerate(groups):
+            title = (f"{sec.title} — part {i + 1}" if sec.title
+                     else f"{grp[0].text.splitlines()[0][:40] or 'Text'} "
+                          f"(part {i + 1})")
+            out.append(type(sec)(idx=0, title=title, paragraphs=grp))
+    for i, sec in enumerate(out):
+        sec.idx = i
+
+    matches = [i for i, s in enumerate(out)
+               if s.title and _CHAPTER_T.match(s.title)]
+    if matches and len(matches) >= 3 and matches[0] > 0:
+        front = matches[0]
+        # never call the whole book front matter: only skip the lead-in
+        for sec in out[:front]:
+            sec.front = True
+        return out, [s.idx for s in out[:front]]
+    return out, []
+
+
 def ingest_file(path: str) -> dict:
     """Ingest one book file; returns the new/updated db row.
 
@@ -110,6 +164,9 @@ def ingest_file(path: str) -> dict:
     extraction: Extraction = _extract(str(src), fmt)
     warnings: List[str] = list(extraction.warnings)
     title = (extraction.title or "").strip() or _title_from_path(str(src))
+    extraction.sections, front = _presplit(extraction.sections)
+    if front:
+        warnings.append("front matter kept as text only (no narration)")
     document = Document(id=book_id, title=title, author=extraction.author,
                         format=fmt, source_path=str(src),
                         content_hash=content_hash(str(src)),
@@ -119,7 +176,16 @@ def ingest_file(path: str) -> dict:
         raise _warned(f"empty text extraction \u2014 no readable text in "
                       f"{src.name}", warnings)
 
-    chunk_sections, chunk_words = plan_sections(document.to_manifest_sections())
+    secs = document.to_manifest_sections()
+    body = [d for d in secs if d["idx"] not in front]
+    chunk_sections, chunk_words = plan_sections(body)
+    for d in secs:
+        if d["idx"] in front:
+            d["chunks"] = []
+            d["tts"] = False
+            d["status"] = "ready"
+            chunk_sections.append(d)
+    chunk_sections.sort(key=lambda d: d["idx"])
     total_words = document.total_words
     if total_words < chunk_words:            # no_tts paragraphs are not spoken
         total_words = chunk_words

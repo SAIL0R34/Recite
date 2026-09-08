@@ -1,13 +1,14 @@
 """Generation queue: pending -> synthesizing -> (aligning) -> encoding -> ready.
 
-A small pool of worker threads (default 3, `RECITE_TTS_WORKERS`), two lanes.
+A small pool of worker threads (default 6, `RECITE_TTS_WORKERS`), two lanes.
 Lane 1 (priority 0) is the section under the reader's cursor plus the one after
 it, so playback starts instantly; lane 2 (priority 1) is the rest of the book in
 document order. A PriorityQueue gives lane 1 preemption for free, and multiple
 workers chew through lane 2 several sections at a time. Only one *book* runs at
 once (whichever grabbed the lane first), so the CPU stays on what the reader is
 looking at; workers waiting on another book re-inject their section instead of
-idling on it. Each worker holds its own KPipeline (kokoro_service).
+idling on it. Chunks synthesize on a shared pool (kokoro_service
+pipelines live on these threads), so one boosted section uses every lane.
 
 State lives only in the manifest, so any restart resumes per section and
 recover() resets sections caught mid-flight. A failing section is marked failed
@@ -22,6 +23,7 @@ import logging
 import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
 import numpy as np
@@ -427,6 +429,45 @@ def _set_status(book_id: str, idx, status: str) -> dict:
     return manifest
 
 
+_POOL: Optional[ThreadPoolExecutor] = None
+_POOL_LOCK = threading.Lock()
+
+
+def _synth_pool() -> ThreadPoolExecutor:
+    global _POOL
+    with _POOL_LOCK:
+        if _POOL is None:
+            _POOL = ThreadPoolExecutor(config.TTS_WORKERS,
+                                       thread_name_prefix="recite-synth")
+        return _POOL
+
+
+def _synth_one(book_id: str, section_idx: int, work_dir, chunk, voice):
+    """Synthesize one chunk to its wav. Kokoro failures retry once and then
+    degrade to estimated silence: one flaky chunk must not sink a chapter."""
+    from . import kokoro_service
+    text = (chunk.get("text") or "").strip()
+    cidx = chunk.get("idx") or 0
+    wav = encode.chunk_wav_path(work_dir, cidx)
+    audio = None
+    if text:
+        for attempt in (0, 1):
+            try:
+                audio, sr = kokoro_service.synthesize(text, voice)
+                break
+            except kokoro_service.KokoroError as e:
+                log.warning("book %s sec %s chunk %s: %s",
+                            book_id, section_idx, cidx, e)
+        if audio is None:
+            audio = kokoro_service.silence(max(0.3, len(text.split()) * 0.35))
+            sr = kokoro_service.SAMPLE_RATE
+    else:  # keep chunk/wav alignment even for an empty chunk
+        sr = kokoro_service.SAMPLE_RATE
+        audio = np.zeros(int(0.05 * sr), dtype=np.float32)
+    encode.write_wav(wav, audio, sr)
+    return chunk, wav, encode.wav_duration_ms(wav)
+
+
 def _mark_chunks(book_id: str, section_idx: int, chunk_idxs: List[int]) -> None:
     """Mid-synthesis chunk statuses: 'ready' before word timings exist so the
     reader can stream grey->black progress; the section-ready write replaces
@@ -469,6 +510,7 @@ def generate_section(book_id: str, section_idx: int) -> None:
     """Synthesize + align + encode one section. Raises on failure; the caller
     marks it failed so the queue keeps moving."""
     from . import kokoro_service
+    pool = _synth_pool()
 
     manifest = manifestio.load(book_id)
     if manifest is None:
@@ -487,37 +529,21 @@ def generate_section(book_id: str, section_idx: int) -> None:
     work_dir = encode.prepare_work_dir(book_dir, section_idx)
 
     _set_status(book_id, section_idx, "synthesizing")
-    wavs = []
-    synthesized: List[int] = []
-    for chunk in section.get("chunks", []):
-        text = (chunk.get("text") or "").strip()
+    # Chunks synthesize CONCURRENTLY on the shared pool: the section at the
+    # reader's cursor — the one they are waiting on — gets every lane.
+    chunk_order = [c.get("idx") or 0 for c in section.get("chunks", [])]
+    chunk_wavs: dict = {}
+    futs = {pool.submit(_synth_one, book_id, section_idx, work_dir, c, voice)
+            for c in section.get("chunks", [])}
+    for fut in as_completed(futs):
+        chunk, wav, dur = fut.result()
         cidx = chunk.get("idx") or 0
-        wav = encode.chunk_wav_path(work_dir, cidx)
-        audio = None
-        if text:
-            # One flaky chunk must not sink the chapter: retry once (kokoro_
-            # service hands out a fresh pipeline after an empty yield), then
-            # fall back to silence and keep going.
-            for attempt in (0, 1):
-                try:
-                    audio, sr = kokoro_service.synthesize(text, voice)
-                    break
-                except kokoro_service.KokoroError as e:
-                    log.warning("book %s sec %s chunk %s: %s",
-                                book_id, section_idx, cidx, e)
-            if audio is None:
-                audio = kokoro_service.silence(max(0.3, len(text.split()) * 0.35))
-                sr = kokoro_service.SAMPLE_RATE
-        else:  # keep chunk/wav alignment even for an empty chunk
-            sr = kokoro_service.SAMPLE_RATE
-            audio = np.zeros(int(0.05 * sr), dtype=np.float32)
-        encode.write_wav(wav, audio, sr)
-        wavs.append((chunk, wav, encode.wav_duration_ms(wav)))
-        synthesized.append(cidx)
+        chunk_wavs[cidx] = (chunk, wav, dur)
         _publish(book_id, "chunk", {"idx": section_idx, "chunk": cidx})
-        if len(synthesized) % 20 == 0:
-            _mark_chunks(book_id, section_idx, synthesized)
-    _mark_chunks(book_id, section_idx, synthesized)
+        if len(chunk_wavs) % 20 == 0:
+            _mark_chunks(book_id, section_idx, list(chunk_wavs))
+    _mark_chunks(book_id, section_idx, list(chunk_wavs))
+    wavs = [chunk_wavs[i] for i in chunk_order]
 
     # Per-chunk timings while the WAVs still exist. Offsets are applied after
     # encoding, once the concatenated section file fixes the chunk order.

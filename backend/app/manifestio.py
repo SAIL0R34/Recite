@@ -88,7 +88,8 @@ def init_manifest(book_id: str, sections: list, engine: str, voice: str) -> dict
                 "title": s.get("title"),
                 "audio": f"audio/section-{s['idx']:03d}.mp3",
                 "duration_ms": None,
-                "status": "pending",
+                "status": s.get("status", "pending"),
+                "tts": s.get("tts", True),
                 "chunks": [
                     {
                         "idx": c["idx"],
