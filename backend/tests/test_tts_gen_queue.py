@@ -52,6 +52,7 @@ def _reset_queue():
     gen_queue._queued.clear()
     gen_queue._live.clear()
     gen_queue._COLD.clear()
+    gen_queue._RETRY.clear()
     gen_queue._active_book = None
 
 
@@ -307,3 +308,57 @@ def test_cold_item_dropped_after_grace(books):
     # ...and it stays `pending` in the manifest — releasable, never lost
     m = manifestio.load(b)
     assert m["sections"][3]["status"] == "pending"
+
+
+# ------------------------------------------------------------------ retries
+def test_transient_failure_retries_then_ready(book, monkeypatch):
+    gen_queue.start = lambda n=None: None
+    real = gen_queue.generate_section
+    calls = {"n": 0}
+
+    def flaky(bid, i):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("kokoro produced no audio")
+        return real(bid, i)
+
+    monkeypatch.setattr(gen_queue, "generate_section", flaky)
+    assert gen_queue._run(book, 0)          # failed -> lane-1 re-queue
+    assert any(it[3] == 0 for it in gen_queue._QUEUE.queue)
+    assert manifestio.load(book)["sections"][0]["status"] == "pending"
+    assert gen_queue._run(book, 0) is False  # second attempt succeeds
+    assert manifestio.load(book)["sections"][0]["status"] == "ready"
+
+
+def test_permanent_failure_marked_after_retries(book, monkeypatch):
+    gen_queue.start = lambda n=None: None
+
+    def boom(bid, i):
+        raise RuntimeError("no audio")
+
+    monkeypatch.setattr(gen_queue, "generate_section", boom)
+    for _ in range(config.TTS_RETRIES):
+        assert gen_queue._run(book, 0)       # retried, still pending
+    assert gen_queue._run(book, 0) is False  # budget spent -> failed
+    assert manifestio.load(book)["sections"][0]["status"] == "failed"
+
+
+def test_recover_revives_failed_sections(book, monkeypatch):
+    m = manifestio.load(book)
+    m["sections"][0]["status"] = "failed"
+    manifestio.save(book, m)
+    reset = gen_queue.recover()
+    m = manifestio.load(book)
+    assert reset >= 1
+    assert m["sections"][0]["status"] == "pending"
+
+
+def test_deleted_book_drops_queued_work(book, monkeypatch):
+    real = gen_queue.generate_section
+    def boom(bid, i):
+        import shutil
+        shutil.rmtree(config.book_dir(bid), ignore_errors=True)
+        raise RuntimeError("no manifest for book %s" % bid)
+    monkeypatch.setattr(gen_queue, "generate_section", boom)
+    assert gen_queue._run(book, 0) is False   # no retry storm for dead books
+    assert not any(it[3] == 0 for it in gen_queue._QUEUE.queue)

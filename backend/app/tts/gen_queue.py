@@ -50,6 +50,7 @@ _SEQ = 0
 # only when nothing hotter waits) for config.TTS_GRACE_S, then dropped at
 # dequeue. The section stays `pending` in the manifest — nothing is lost.
 _COLD: dict = {}  # (book_id, idx) -> expire_ts
+_RETRY: dict = {}  # (book_id, idx) -> attempts spent
 
 
 # ----------------------------------------------------------------- plumbing
@@ -123,7 +124,8 @@ def request_generation(book_id: str, boost_sections: Optional[List[int]] = None,
     for idx in boost_sections or []:
         for candidate in (idx, idx + 1):      # boost + immediate successor
             s = by_idx.get(candidate)
-            if candidate not in lane1 and _needs(book_id, s):
+            if candidate not in lane1 and _needs(book_id, s,
+                                                 force=candidate == idx):
                 lane1.append(candidate)
 
     # lane 2: following pending sections inside the chunk budget
@@ -210,12 +212,16 @@ def _next_seq() -> int:
     return _SEQ
 
 
-def _needs(book_id: str, section: Optional[dict]) -> bool:
+def _needs(book_id: str, section: Optional[dict],
+           force: bool = False) -> bool:
     """True unless finished, or in flight under a live worker (stale flags are
-    what recover() is for)."""
+    what recover() is for). `force` also picks up `failed` sections — a boost
+    (chapter click / window request) retries them on the spot."""
     if section is None:
         return False
     status = section.get("status") or "pending"
+    if force and status == "failed":
+        return True
     if status in TERMINAL:
         return False
     if status in IN_FLIGHT:
@@ -245,6 +251,14 @@ def recover() -> int:
                 reset += 1
                 _publish(book_id, "section",
                          {"idx": section.get("idx"), "status": "pending"})
+            elif section.get("status") == "failed":
+                # a failure that survived a restart is a stale verdict; the
+                # condition was usually transient (model hiccup, rmtree race)
+                section["status"] = "pending"
+                changed = True
+                reset += 1
+                _publish(book_id, "section",
+                         {"idx": section.get("idx"), "status": "pending"})
         if changed:
             manifestio.save(book_id, manifest)
     if reset:
@@ -253,10 +267,13 @@ def recover() -> int:
 
 
 # ------------------------------------------------------------------- worker
-def _enqueue(priority: int, book_id: str, idx: int) -> None:
+def _enqueue(priority: int, book_id: str, idx: int,
+             force: bool = False) -> None:
     global _SEQ
     key = (book_id, idx)
-    if key in _queued or key in _live:
+    # force: the item is being re-queued by its own running worker (retry) —
+    # the _live entry is that worker, not another runner
+    if key in _queued or ((not force) and key in _live):
         return
     _queued.add(key)
     _SEQ += 1
@@ -307,12 +324,17 @@ def _worker_loop() -> None:
         with _LOCK:
             if _expired_cold((book_id, idx)):
                 continue
+            if (book_id, idx) in _live:
+                # a retry queued by its own still-running worker; pick it up
+                # after that worker releases it
+                _QUEUE.put(item)
+                continue
         requeued = False
         try:
             requeued = not _await_book_slot(book_id, item=item)
             if requeued:
                 continue      # re-injected; stays queued for a later turn
-            _run(book_id, idx)
+            requeued = _run(book_id, idx)
         except Exception:
             log.exception("generation task failed for %s section %s", book_id, idx)
         finally:
@@ -345,23 +367,37 @@ def _await_book_slot(book_id: str, timeout: float = 600.0,
     return True  # give up waiting; run anyway rather than stall forever
 
 
-def _run(book_id: str, idx: int) -> None:
+def _run(book_id: str, idx: int) -> bool:
     global _active_book
     _await_book_slot(book_id)
     with _LOCK:
         _live.add((book_id, idx))
         _active_book = book_id
+    retry = False
     try:
         generate_section(book_id, idx)
     except Exception as e:
         log.warning("book %s section %s failed: %s", book_id, idx, e)
-        _set_status(book_id, idx, "failed")
+        if manifestio.load(book_id) is None:
+            return False                   # book deleted mid-flight: drop
+        with _LOCK:
+            n = _RETRY.get((book_id, idx), 0) + 1
+            _RETRY[(book_id, idx)] = n
+            if n <= config.TTS_RETRIES:    # transient is the norm — retry now
+                _enqueue(0, book_id, idx, force=True)
+                retry = True
+        if not retry:
+            _RETRY.pop((book_id, idx), None)
+            _set_status(book_id, idx, "failed")
+    else:
+        _RETRY.pop((book_id, idx), None)
     finally:
         with _LOCK:
             _live.discard((book_id, idx))
             if _queued_for(book_id) == 0 and _live_for(book_id) == 0:
                 _active_book = None
     _maybe_done(book_id)
+    return retry
 
 
 def _live_for(book_id: str) -> int:
