@@ -4,6 +4,62 @@ import SpeedPopover from './SpeedPopover'
 import type { Timeline } from '../player/timeline'
 import { globalToReady } from '../player/timeline'
 
+/* ---------- inline icons (no emoji anywhere on the transport) ---------- */
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden focusable="false">
+      <polygon points="6 3.5 20 12 6 20.5" fill="currentColor" />
+    </svg>
+  )
+}
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden focusable="false">
+      <rect x="6" y="4.5" width="4" height="15" rx="1.2" fill="currentColor" />
+      <rect x="14" y="4.5" width="4" height="15" rx="1.2" fill="currentColor" />
+    </svg>
+  )
+}
+function RewindIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <polyline points="1.7 4 1.7 10 7.7 10" />
+      <path d="M3.8 15a9 9 0 1 0 2.13-9.36L1.7 10" />
+    </svg>
+  )
+}
+function ForwardIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <polyline points="22.3 4 22.3 10 16.3 10" />
+      <path d="M20.2 15a9 9 0 1 1-2.12-9.36L22.3 10" />
+    </svg>
+  )
+}
+
 function fmt(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
   const m = Math.floor(s / 60)
@@ -137,29 +193,30 @@ export default function TransportBar({
       {/* row 3 — transport */}
       <div className="mt-1 flex items-center gap-1.5 sm:gap-2">
         <button
-          className="btn btn-ghost"
+          className="skip-btn"
           onClick={() => usePlayerStore.getState().seekBy(-10_000)}
           title="Back 10s (←)"
           aria-label="back 10 seconds"
         >
-          ⏪10
+          <RewindIcon />
+          <span aria-hidden>10</span>
         </button>
         <button
-          className="btn btn-accent"
+          className="play-btn"
           onClick={() => usePlayerStore.getState().toggle()}
           title="Play/pause (space)"
           aria-label={playing ? 'pause' : 'play'}
-          style={{ minWidth: '3.4rem' }}
         >
-          {playing ? '⏸' : '▶'}
+          {playing ? <PauseIcon /> : <PlayIcon />}
         </button>
         <button
-          className="btn btn-ghost"
+          className="skip-btn"
           onClick={() => usePlayerStore.getState().seekBy(10_000)}
           title="Forward 10s (→)"
           aria-label="forward 10 seconds"
         >
-          10⏩
+          <ForwardIcon />
+          <span aria-hidden>10</span>
         </button>
 
         {notReady && (

@@ -314,3 +314,57 @@ input[type='range'].speed {
   color: var(--muted, #888);
   cursor: pointer;
 }
+
+/* ---- transport: round play button and skip pills (inline SVG icons) --- */
+.play-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.28);
+  cursor: pointer;
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+.play-btn:hover {
+  filter: brightness(1.08);
+}
+.play-btn:active {
+  transform: scale(0.93);
+}
+.play-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.skip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  min-width: 4rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.12s ease, transform 0.08s ease;
+}
+.skip-btn:hover {
+  background: var(--surface-2);
+}
+.skip-btn:active {
+  transform: scale(0.96);
+}
+.skip-btn:focus-visible {
+  outline: 2px solid var(--ring);
+}
