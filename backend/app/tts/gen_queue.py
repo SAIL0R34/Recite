@@ -419,6 +419,8 @@ def _set_status(book_id: str, idx, status: str) -> dict:
                     # chunk statuses were mid-flight; a retry starts clean
                     for c in section.get("chunks", []):
                         c["status"] = "pending"
+                    section.pop("partial_audio", None)
+                    section.pop("partial_ms", None)
                 return
         return False
     with _STATUS_LOCK:
@@ -427,6 +429,56 @@ def _set_status(book_id: str, idx, status: str) -> dict:
             return {}
     _publish(book_id, "section", {"idx": idx, "status": status})
     return manifest
+
+
+def _write_partial(book_id: str, section_idx: int, chunk_order,
+                   chunk_wavs: dict) -> None:
+    """Playable prefix for a section still synthesizing. Concatenates the
+    contiguous finished prefix to partial-NNN.mp3 and gives those chunks
+    estimated word timings, so narration can START while the rest of the
+    part renders; the final write replaces the file and the estimates."""
+    from . import encode, timestamps
+    prefix = []
+    for i in chunk_order:
+        t = chunk_wavs.get(i)
+        if t is None:
+            break
+        prefix.append(t)
+    if not prefix:
+        return
+    rel = f"audio/partial-{int(section_idx):03d}.mp3"
+    path = config.book_dir(book_id) / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        encode.concat_to_mp3([w for _c, w, _d in prefix], path)
+    except Exception as e:  # pragma: no cover - partial is opportunistic
+        log.warning("book %s sec %s partial: %s", book_id, section_idx, e)
+        return
+    ms = 0
+    per: dict = {}
+    for chunk, _wav, dur in prefix:
+        per[chunk.get("idx") or 0] = {
+            "global_start_ms": ms,
+            "duration_ms": dur,
+            "words": timestamps.estimate_timations(chunk.get("text") or "",
+                                                   None, dur),
+        }
+        ms += dur
+
+    def _mut(m):
+        for sec in m.get("sections", []):
+            if sec.get("idx") != section_idx:
+                continue
+            sec["partial_audio"] = rel
+            sec["partial_ms"] = ms
+            for c in sec.get("chunks", []):
+                t = per.get(c.get("idx"))
+                if t:
+                    c.update(t)
+            return
+        return False
+
+    manifestio.update(book_id, _mut)
 
 
 _POOL: Optional[ThreadPoolExecutor] = None
@@ -540,8 +592,9 @@ def generate_section(book_id: str, section_idx: int) -> None:
         cidx = chunk.get("idx") or 0
         chunk_wavs[cidx] = (chunk, wav, dur)
         _publish(book_id, "chunk", {"idx": section_idx, "chunk": cidx})
-        if len(chunk_wavs) % 20 == 0:
+        if len(chunk_wavs) % 10 == 0:
             _mark_chunks(book_id, section_idx, list(chunk_wavs))
+            _write_partial(book_id, section_idx, chunk_order, chunk_wavs)
     _mark_chunks(book_id, section_idx, list(chunk_wavs))
     wavs = [chunk_wavs[i] for i in chunk_order]
 
@@ -597,12 +650,18 @@ def generate_section(book_id: str, section_idx: int) -> None:
         sec["audio"] = audio_path
         sec["duration_ms"] = total_ms
         sec["status"] = "ready"
+        sec.pop("partial_audio", None)
+        sec.pop("partial_ms", None)
         m["alignment"] = ("whisperx" if whisperx_chunks and
                           whisperx_chunks == len(wavs) else "interp")
         m["voice"] = voice
         m["engine"] = engine()
 
     manifest = manifestio.update(book_id, _mutate) or manifest
+    try:  # the prefix file is subsumed by the final render
+                (config.book_dir(book_id) / f"audio/partial-{int(section_idx):03d}.mp3").unlink(missing_ok=True)
+    except OSError:
+        pass
     _publish(book_id, "section", {"idx": section_idx, "status": "ready"})
     log.info("book %s section %s ready (%.1fs audio, %s timing)", book_id,
              section_idx, total_ms / 1000.0, manifest["alignment"])

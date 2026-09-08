@@ -141,7 +141,10 @@ def get_timings(book_id: str, section_idx: int):
 def get_audio(book_id: str, fname: str):
     """Static file serving; FileResponse implements Range (206) for scrubbing."""
     _require(book_id)
-    if not fname.startswith("section-") or not fname.endswith(".mp3"):
+    # section-*.mp3 is final audio; partial-*.mp3 is a playable prefix of a
+    # section that is still synthesizing
+    if not (fname.startswith("section-") or fname.startswith("partial-")) \
+            or not fname.endswith(".mp3"):
         raise HTTPException(400, "bad audio name")
     p = config.book_file(book_id, f"audio/{fname}")
     if not p.exists() or p.is_dir():

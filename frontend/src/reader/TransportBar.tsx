@@ -10,6 +10,11 @@ function fmt(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
+/**
+ * Bottom transport: scrubber (READY axis) with the played portion filled and
+ * pending-audio gaps marked, a section label with a live "streaming" badge
+ * while a partial prefix plays, and the button row.
+ */
 export default function TransportBar({
   timeline,
   onToggleBookmarks,
@@ -25,15 +30,19 @@ export default function TransportBar({
 
   const readyPos = globalToReady(timeline, globalMs)
   const cur = timeline.byIndex[sectionIdx]
-  const notReady = cur && cur.status !== 'ready'
+  const streaming = !!cur && cur.status !== 'ready' && cur.partialMs > 0
+  const notReady = cur && cur.status !== 'ready' && cur.partialMs <= 0
+  const remaining = Math.max(0, timeline.readyMs - readyPos)
+  const playedPct = timeline.readyMs
+    ? (readyPos / timeline.readyMs) * 100
+    : 0
 
   // gap ticks on the ready axis (where a ready segment ends → gap begins)
   const ticks: { left: number }[] = []
   for (let i = 0; i < timeline.readySegments.length - 1; i++) {
     const seg = timeline.readySegments[i]
     const next = timeline.readySegments[i + 1]
-    const gapMs =
-      next.globalStart - (seg.globalStart + seg.durationMs)
+    const gapMs = next.globalStart - (seg.globalStart + seg.durationMs)
     if (gapMs > 0)
       ticks.push({
         left: ((seg.readyStart + seg.durationMs) / timeline.readyMs) * 100,
@@ -42,40 +51,46 @@ export default function TransportBar({
 
   return (
     <div
-      className="flex items-center gap-2 border-t px-3 py-2 sm:gap-3 sm:px-4"
+      className="border-t px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 sm:px-4"
       style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
     >
-      <button
-        className="btn btn-ghost"
-        onClick={() => usePlayerStore.getState().seekBy(-10_000)}
-        title="Back 10s (←)"
+      {/* row 1 — what you're listening to, and where it ends */}
+      <div
+        className="mb-1 flex min-w-0 items-center gap-2 text-xs"
+        style={{ color: 'var(--muted)' }}
       >
-        ⏪10
-      </button>
-      <button
-        className="btn btn-accent"
-        onClick={() => usePlayerStore.getState().toggle()}
-        title="Play/pause (space)"
-        style={{ minWidth: '3.2rem' }}
-      >
-        {playing ? '⏸' : '▶'}
-      </button>
-      <button
-        className="btn btn-ghost"
-        onClick={() => usePlayerStore.getState().seekBy(10_000)}
-        title="Forward 10s (→)"
-      >
-        10⏩
-      </button>
+        <span
+          className="min-w-0 flex-1 truncate font-medium"
+          style={{ color: 'var(--fg)' }}
+          title={cur?.title}
+        >
+          {cur?.title || '—'}
+        </span>
+        {streaming && (
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 font-semibold"
+            style={{
+              color: 'var(--accent)',
+              background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+            }}
+            title="Narration for this part is still rendering; playback continues as it grows"
+          >
+            ● streaming
+          </span>
+        )}
+        <span className="tabular-nums shrink-0">{fmt(readyPos)}</span>
+        <span aria-hidden>·</span>
+        <span className="tabular-nums shrink-0" title="remaining">
+          −{fmt(remaining)}
+        </span>
+      </div>
 
-      <span className="tabular-nums text-xs shrink-0" style={{ color: 'var(--muted)' }}>
-        {fmt(readyPos)}
-      </span>
-
-      <div className="relative min-w-0 flex-1">
+      {/* row 2 — the scrubber */}
+      <div className="relative">
         <input
           type="range"
           className="scrub"
+          style={{ ['--played' as never]: `${playedPct}%` }}
           min={0}
           max={Math.max(1, timeline.readyMs)}
           step={100}
@@ -119,32 +134,63 @@ export default function TransportBar({
         ))}
       </div>
 
-      <span className="tabular-nums text-xs shrink-0" style={{ color: 'var(--muted)' }}>
-        {fmt(timeline.readyMs)}
-      </span>
-
-      {notReady && (
+      {/* row 3 — transport */}
+      <div className="mt-1 flex items-center gap-1.5 sm:gap-2">
         <button
-          className="btn btn-sm"
-          onClick={() => usePlayerStore.getState().nextReadySection()}
-          title="Jump to next ready section"
+          className="btn btn-ghost"
+          onClick={() => usePlayerStore.getState().seekBy(-10_000)}
+          title="Back 10s (←)"
+          aria-label="back 10 seconds"
         >
-          next ready →
+          ⏪10
         </button>
-      )}
+        <button
+          className="btn btn-accent"
+          onClick={() => usePlayerStore.getState().toggle()}
+          title="Play/pause (space)"
+          aria-label={playing ? 'pause' : 'play'}
+          style={{ minWidth: '3.4rem' }}
+        >
+          {playing ? '⏸' : '▶'}
+        </button>
+        <button
+          className="btn btn-ghost"
+          onClick={() => usePlayerStore.getState().seekBy(10_000)}
+          title="Forward 10s (→)"
+          aria-label="forward 10 seconds"
+        >
+          10⏩
+        </button>
 
-      <SpeedPopover rate={rate} />
+        {notReady && (
+          <button
+            className="btn btn-sm"
+            onClick={() => usePlayerStore.getState().nextReadySection()}
+            title="Jump to next ready section"
+          >
+            next ready →
+          </button>
+        )}
 
-      <button
-        className="btn btn-ghost"
-        onClick={onToggleBookmarks}
-        title="Bookmarks (B to pin)"
-      >
-        🔖
-      </button>
-      <button className="btn btn-ghost" onClick={cycleTheme} title="Theme">
-        ◐
-      </button>
+        <span className="flex-1" />
+        <SpeedPopover rate={rate} />
+        <button
+          className="btn btn-ghost"
+          onClick={onToggleBookmarks}
+          title="Bookmarks (B to pin)"
+          aria-label="bookmarks"
+        >
+          🔖
+        </button>
+        <button
+          className="btn btn-ghost"
+          onClick={cycleTheme}
+          title="Theme"
+          aria-label="cycle theme"
+        >
+          ◐
+        </button>
+      </div>
     </div>
   )
 }

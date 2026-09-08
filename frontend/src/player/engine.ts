@@ -28,6 +28,8 @@ class PlayerEngine {
   private preloadHref: string | null = null
   private _sectionIdx = 0
   private _rate = 1
+  // partial section ended: resume there once more audio has landed
+  private _wait: { section: number; playedMs: number } | null = null
 
   // ---- subscriptions -----------------------------------------------
 
@@ -64,6 +66,7 @@ class PlayerEngine {
       this.audio = null
     }
     this.preloadHref = null
+    this._wait = null
     this.bookId = bookId
     this.manifest = manifest
     this.tl = buildTimeline(manifest)
@@ -84,7 +87,7 @@ class PlayerEngine {
   async play(): Promise<void> {
     if (!this.tl || !this.manifest) return
     const entry = this.entry(this._sectionIdx)
-    if (!entry || entry.status !== 'ready') {
+    if (!entry || !entry.ready) {
       const near = this.nearestReady(this._sectionIdx)
       if (near === null) return
       this._sectionIdx = near
@@ -128,7 +131,7 @@ class PlayerEngine {
     let pos = globalToPosition(tl, ms)
     const entry = this.entry(pos.section)
     if (!entry) return false
-    if (entry.status !== 'ready') {
+    if (!entry.ready) {
       const near = this.nearestReady(entry.section)
       if (near === null) return false
       this._sectionIdx = near
@@ -208,7 +211,40 @@ class PlayerEngine {
     return this.manifest?.sections.find((s) => s.idx === idx)
   }
   private url(sec: ManifestSection): string {
-    return `/api/books/${encodeURIComponent(this.bookId ?? '')}/${sec.audio}`
+    // A still-synthesizing section plays its partial prefix; ?v busts the
+    // cache each time the prefix grows or the final render lands.
+    const partial = sec.status !== 'ready' && !!sec.partial_audio
+    const file = partial ? sec.partial_audio : sec.audio
+    const v = partial ? sec.partial_ms ?? 0 : sec.duration_ms
+    return `/api/books/${encodeURIComponent(this.bookId ?? '')}/${file}?v=${v}`
+  }
+
+  /** Continue a partial section whose audio has grown (or finalised).
+   * Called after manifest refreshes; a no-op while nothing was waiting. */
+  async resumeWaiting(): Promise<boolean> {
+    const w = this._wait
+    if (!w) return false
+    const sec = this.sectionOf(w.section)
+    if (!sec) { this._wait = null; return false }
+    const grew = (sec.partial_ms ?? 0) >= w.playedMs + 1500
+    if (!(sec.status === 'ready' || grew)) return false
+    this._wait = null
+    this._sectionIdx = w.section
+    if (!(await this.loadSrc(sec))) return false
+    const a = this.audio!
+    a.currentTime = Math.min(
+      w.playedMs / 1000 + 0.05,
+      Math.max(0, (a.duration || 0) - 0.1),
+    )
+    this.applyRate()
+    try {
+      await a.play()
+    } catch {
+      /* autoplay policy */
+    }
+    this.emitState()
+    this.emitTick()
+    return true
   }
   private nextReadyAfter(idx: number): number | null {
     if (!this.tl) return null
@@ -279,6 +315,18 @@ class PlayerEngine {
   }
 
   private handleEnded(): void {
+    const sec = this.sectionOf(this._sectionIdx)
+    if (sec && sec.status !== 'ready' && sec.partial_audio) {
+      // Part of this section is still rendering. Park at the end of the
+      // prefix; resumeWaiting() continues (or hops to the final render)
+      // once the manifest reports more audio.
+      this._wait = {
+        section: this._sectionIdx,
+        playedMs: (this.audio?.duration ?? 0) * 1000,
+      }
+      this.pause()
+      return
+    }
     const next = this.nextReadyAfter(this._sectionIdx)
     if (next === null) {
       this.pause()

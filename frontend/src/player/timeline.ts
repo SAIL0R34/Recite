@@ -17,6 +17,8 @@ export interface SectionEntry {
   endMs: number
   status: string
   ready: boolean
+  /** ms of playable prefix when the section is still synthesizing */
+  partialMs: number
   title: string
 }
 
@@ -53,14 +55,18 @@ export function buildTimeline(manifest: Manifest): Timeline {
   const byIndex: Record<number, SectionEntry> = {}
   let cursor = 0
   for (const s of sections) {
-    const durationMs = Math.max(0, s.duration_ms ?? 0)
+    const partialMs = s.partial_ms ?? 0
+    const partial = s.status !== 'ready' && partialMs > 0
+    const durationMs = Math.max(0, partial ? partialMs : s.duration_ms ?? 0)
     const e: SectionEntry = {
       section: s.idx,
       startMs: cursor,
       durationMs,
       endMs: cursor + durationMs,
       status: s.status,
-      ready: s.status === 'ready',
+      // playable = final audio, or a partial prefix that already plays
+      ready: s.status === 'ready' || partial,
+      partialMs: partial ? partialMs : 0,
       title: s.title ?? '',
     }
     entries.push(e)

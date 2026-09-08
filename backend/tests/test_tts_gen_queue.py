@@ -14,6 +14,8 @@ import pytest
 from app import config, events, manifestio
 from app.tts import gen_queue, kokoro_service
 
+_WRITE_PARTIAL = gen_queue._write_partial  # the fixture stubs the module attr
+
 
 class FakeLoop:
     """Runs scheduled callbacks synchronously — enough to capture events."""
@@ -34,10 +36,14 @@ def books(tmp_path, monkeypatch):
     (data / "books").mkdir(parents=True)
     _reset_queue()
     events.bind_loop(FakeLoop())
+    # partials concat real ffmpeg audio; one dedicated test covers them,
+    # the rest of the file must not pay for it (nor flake on slow joins)
+    monkeypatch.setattr(gen_queue, "_write_partial", lambda *a, **k: None)
     yield data
     # Join the worker before teardown so no in-flight _run() can write to the
-    # (soon deleted) tmp dir while the next test's fixtures race ahead.
-    gen_queue.stop()
+    # (soon deleted) tmp dir while the next test's fixtures race ahead. With
+    # the shared chunk pool a section can outlive the old 5s budget.
+    gen_queue.stop(30)
     events.bind_loop(None)
     _reset_queue()
 
@@ -362,3 +368,34 @@ def test_deleted_book_drops_queued_work(book, monkeypatch):
     monkeypatch.setattr(gen_queue, "generate_section", boom)
     assert gen_queue._run(book, 0) is False   # no retry storm for dead books
     assert not any(it[3] == 0 for it in gen_queue._QUEUE.queue)
+
+
+
+
+def test_partial_prefix_streams_then_releases(books, stub_synth, monkeypatch):
+    """Mid-synthesis the manifest advertises partial audio for the finished
+    prefix (growing, with estimated words); the final write releases it."""
+    seen = []
+
+    def spy(bid, idx, chunk_order, chunk_wavs):
+        _WRITE_PARTIAL(bid, idx, chunk_order, chunk_wavs)
+        sec = next(s for s in manifestio.load(bid)["sections"] if s["idx"] == idx)
+        if sec.get("partial_ms"):
+            seen.append(sec["partial_ms"])
+
+    monkeypatch.setattr(gen_queue, "_write_partial", spy)
+    sections = [{
+        "idx": 0, "title": "S",
+        "chunks": [{"idx": i, "para": 0, "sentence_range": [0, 1],
+                    "text": f"Word chain number {i} keeps on going."}
+                   for i in range(12)],
+    }]
+    config.book_dir("ptest").mkdir(parents=True)
+    manifestio.init_manifest("ptest", sections, "kokoro-test", "af_heart")
+    gen_queue.generate_section("ptest", 0)
+
+    assert seen and seen[0] > 0 and all(a <= b for a, b in zip(seen, seen[1:]))
+    sec = manifestio.load("ptest")["sections"][0]
+    assert sec["status"] == "ready"
+    assert "partial_audio" not in sec and "partial_ms" not in sec
+    assert not (config.book_dir("ptest") / "audio/partial-000.mp3").exists()

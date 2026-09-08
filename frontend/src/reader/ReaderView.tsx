@@ -137,6 +137,7 @@ export default function ReaderView() {
   useEffect(() => {
     if (!manifest) return
     let lastReady = -1
+    let chunkTick = 0
     const reload = async () => {
       try {
         const m = await getManifest(bookId, { slim: true })
@@ -152,7 +153,15 @@ export default function ReaderView() {
           usePlayerStore.getState().clearChunkDone(e.idx)
         void reload()
       },
-      onChunk: (e) => usePlayerStore.getState().noteChunk(e.idx, e.chunk),
+      onChunk: (e) => {
+        usePlayerStore.getState().noteChunk(e.idx, e.chunk)
+        // partial audio growing under the playhead: refresh periodically
+        // and let the engine continue a parked partial section
+        if (e.idx === engine.sectionIdx && ++chunkTick > 10) {
+          chunkTick = 0
+          void reload().then(() => void engine.resumeWaiting())
+        }
+      },
       onGeneration: () => void reload(),
     })
     let timer: ReturnType<typeof setInterval> | null = null

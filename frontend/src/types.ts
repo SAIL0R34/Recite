@@ -73,6 +73,9 @@ export interface ManifestSection {
   audio: string
   duration_ms: number
   status: string
+  /** playable prefix audio while the section still synthesizes */
+  partial_audio?: string | null
+  partial_ms?: number
   chunks: ManifestChunk[]
 }
 

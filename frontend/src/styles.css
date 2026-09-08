@@ -128,33 +128,49 @@ body {
 
 /* ---- scrubber ---------------------------------------------------------- */
 
+/* The played portion is filled via the --played custom property set by
+   TransportBar (native range inputs have no portable filled-track). */
 input[type='range'].scrub {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 20px;
+  height: 24px; /* generous touch target; the track itself stays slim */
   background: transparent;
   cursor: pointer;
 }
 input[type='range'].scrub::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface-2);
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--played, 0%),
+    var(--surface-2) var(--played, 0%)
+  );
   border: 1px solid var(--border);
 }
 input[type='range'].scrub::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
-  margin-top: -6px;
+  margin-top: -5px;
   border-radius: 999px;
   background: var(--accent);
-  border: none;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  transition: transform 0.12s ease;
+}
+input[type='range'].scrub:hover::-webkit-slider-thumb,
+input[type='range'].scrub:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.35);
 }
 input[type='range'].scrub::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface-2);
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--played, 0%),
+    var(--surface-2) var(--played, 0%)
+  );
   border: 1px solid var(--border);
 }
 input[type='range'].scrub::-moz-range-thumb {
@@ -162,19 +178,24 @@ input[type='range'].scrub::-moz-range-thumb {
   height: 14px;
   border-radius: 999px;
   background: var(--accent);
-  border: none;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+input[type='range'].scrub:disabled {
+  opacity: 0.5;
 }
 
 /* ---- odds and ends ------------------------------------------------------ */
 
 .gap-tick {
+  /* the input is 24px tall with a 6px track centred vertically */
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--border);
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
+  background: var(--muted);
   border-radius: 1px;
-  opacity: 0.9;
+  opacity: 0.55;
 }
 
 .btn {
