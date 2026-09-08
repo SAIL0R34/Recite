@@ -272,8 +272,8 @@ def _enqueue(priority: int, book_id: str, idx: int,
     global _SEQ
     key = (book_id, idx)
     # force: the item is being re-queued by its own running worker (retry) —
-    # the _live entry is that worker, not another runner
-    if key in _queued or ((not force) and key in _live):
+    # _queued/_live entries belong to that worker, not another runner
+    if not force and (key in _queued or key in _live):
         return
     _queued.add(key)
     _SEQ += 1
