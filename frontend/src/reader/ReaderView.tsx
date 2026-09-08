@@ -202,11 +202,26 @@ export default function ReaderView() {
   }, [])
   useEffect(() => {
     const events = ['pointerdown', 'keydown'] as const
-    events.forEach((e) => window.addEventListener(e, pokeBar, { passive: true }))
-    // hovering the bottom edge — where the bar lives — reveals it; scrolling
-    // deliberately does not, so the text stays the focal point
+    // On touch the *only* reveal path is the explicit pill button — taps and
+    // swipes must not reveal (their pointerdown/pointermove are filtered by
+    // pointerType). Mouse and keyboard reveal as usual; scrolling never does.
+    const onPointer = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' || e.pointerType === 'pen') pokeBar()
+    }
+    events.forEach((e) =>
+      window.addEventListener(
+        e,
+        e === 'pointerdown' ? (onPointer as EventListener) : pokeBar,
+        { passive: true },
+      ),
+    )
+    // hovering the bottom edge — where the bar lives — reveals it
     const onMove = (e: PointerEvent) => {
-      if (e.clientY > window.innerHeight - 110) pokeBar()
+      if (
+        (e.pointerType === 'mouse' || e.pointerType === 'pen') &&
+        e.clientY > window.innerHeight - 110
+      )
+        pokeBar()
     }
     window.addEventListener('pointermove', onMove, { passive: true })
     pokeBar()
