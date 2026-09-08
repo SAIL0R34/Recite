@@ -67,9 +67,9 @@ function fmt(ms: number): string {
 }
 
 /**
- * Bottom transport: scrubber (READY axis) with the played portion filled and
- * pending-audio gaps marked, a section label with a live "streaming" badge
- * while a partial prefix plays, and the button row.
+ * Bottom transport: title row with a live "streaming" badge and the utility
+ * cluster (speed / bookmarks / theme), the scrubber on the READY axis with
+ * gap ticks, and a pure centered play row.
  */
 export default function TransportBar({
   timeline,
@@ -110,7 +110,7 @@ export default function TransportBar({
       className="border-t px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 sm:px-4"
       style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
     >
-      {/* row 1 — what you're listening to, and where it ends */}
+      {/* row 1 — title, streaming badge, time, utilities */}
       <div
         className="mb-1 flex min-w-0 items-center gap-2 text-xs"
         style={{ color: 'var(--muted)' }}
@@ -139,6 +139,25 @@ export default function TransportBar({
         <span className="tabular-nums shrink-0" title="remaining">
           −{fmt(remaining)}
         </span>
+        <div className="util-cluster shrink-0">
+          <SpeedPopover rate={rate} />
+          <button
+            className="btn btn-ghost"
+            onClick={onToggleBookmarks}
+            title="Bookmarks (B to pin)"
+            aria-label="bookmarks"
+          >
+            🔖
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={cycleTheme}
+            title="Theme"
+            aria-label="cycle theme"
+          >
+            ◐
+          </button>
+        </div>
       </div>
 
       {/* row 2 — the scrubber */}
@@ -179,28 +198,30 @@ export default function TransportBar({
           }}
           aria-label="seek"
         />
-        {/* gap ticks: where un-generated audio sits */}
         {ticks.map((t, i) => (
           <span
             key={i}
             className="gap-tick"
             style={{ left: `${t.left}%` }}
-            title="audio pending"
+            aria-hidden
           />
         ))}
       </div>
 
-      {/* row 3 — transport: trio centred, utilities right-anchored */}
+      {/* row 3 — the centered trio; next-ready pinned left */}
       <div className="relative mt-1 flex items-center justify-center gap-2 sm:gap-3">
-        {notReady && (
-          <button
-            className="btn btn-sm absolute left-0"
-            onClick={() => usePlayerStore.getState().nextReadySection()}
-            title="Jump to next ready section"
-          >
-            next ready →
-          </button>
-        )}
+        <span className="absolute left-0">
+          {notReady && (
+            <button
+              className="btn btn-sm"
+              onClick={() => usePlayerStore.getState().nextReadySection()}
+              title="Jump to next ready section"
+            >
+              next ready →
+            </button>
+          )}
+        </span>
+
         <button
           className="skip-btn"
           onClick={() => usePlayerStore.getState().seekBy(-10_000)}
@@ -227,28 +248,7 @@ export default function TransportBar({
           <ForwardIcon />
           <span aria-hidden>10</span>
         </button>
-
-        <div className="absolute right-0 flex items-center gap-1.5">
-          <SpeedPopover rate={rate} />
-          <button
-            className="btn btn-ghost"
-            onClick={onToggleBookmarks}
-            title="Bookmarks (B to pin)"
-            aria-label="bookmarks"
-          >
-            🔖
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={cycleTheme}
-            title="Theme"
-            aria-label="cycle theme"
-          >
-            ◐
-          </button>
-        </div>
       </div>
     </div>
   )
 }
-

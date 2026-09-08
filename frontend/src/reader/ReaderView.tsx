@@ -410,6 +410,25 @@ export default function ReaderView() {
           />
         </div>
       )}
+
+      {/* touch devices have no hover zone — give them an explicit reveal
+          pill when the bar auto-hid */}
+      <button
+        className={`reveal-btn${barVisible ? ' reveal-hidden' : ''}`}
+        onClick={pokeBar}
+        title="Show playback controls"
+        aria-label="Show playback controls"
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             strokeWidth="1.9" strokeLinecap="round" aria-hidden focusable="false">
+          <line x1="4" y1="7" x2="20" y2="7" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="17" x2="20" y2="17" />
+          <circle cx="9" cy="7" r="2.4" fill="var(--accent)" stroke="none" />
+          <circle cx="15" cy="12" r="2.4" fill="var(--accent)" stroke="none" />
+          <circle cx="9" cy="17" r="2.4" fill="var(--accent)" stroke="none" />
+        </svg>
+      </button>
     </div>
   )
 }
