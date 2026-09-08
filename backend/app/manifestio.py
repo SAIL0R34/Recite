@@ -38,9 +38,41 @@ def save(book_id: str, manifest: dict) -> None:
     p = manifest_path(book_id)
     p.parent.mkdir(parents=True, exist_ok=True)
     with _lock_for(book_id):
-        tmp = p.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(p)
+        _write(book_id, manifest)
+
+
+def _write(book_id: str, manifest: dict) -> None:
+    """Atomic whole-file write. Caller holds _lock_for(book_id)."""
+    p = manifest_path(book_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(p)
+
+
+def update(book_id: str, mutate) -> Optional[dict]:
+    """One read-modify-write transaction for concurrent writers.
+
+    Workers each mutate a single section; load->mutate->save must be one
+    locked step, or two parallel generators clobber each other's fresh
+    statuses (observed as sections stuck in 'encoding' with ready audio).
+    mutate(manifest) may return False to skip the write. Returns the saved
+    manifest (or None if the book vanished / write skipped)."""
+    with _lock_for(book_id):
+        manifest = _read(book_id)
+        if manifest is None:
+            return None
+        if mutate(manifest) is False:
+            return None
+        _write(book_id, manifest)
+        return manifest
+
+
+def _read(book_id: str) -> Optional[dict]:
+    p = manifest_path(book_id)
+    if not p.exists():
+        return None
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def init_manifest(book_id: str, sections: list, engine: str, voice: str) -> dict:

@@ -239,6 +239,7 @@ def recover() -> int:
         if not (book_dir / "manifest.json").exists():
             continue
         book_id = book_dir.name
+        # runs at startup, before any worker exists — plain load/save is safe
         manifest = manifestio.load(book_id)
         if manifest is None:
             continue
@@ -408,17 +409,16 @@ def _set_status(book_id: str, idx, status: str) -> dict:
     """Persist + broadcast one status transition. Serialized: concurrent
     pool workers each load-mutate-save the whole manifest, and an unguarded
     writer can clobber another worker's fresher status."""
-    with _STATUS_LOCK:
-        manifest = manifestio.load(book_id)
-        if manifest is None:
-            return {}
-        for section in manifest.get("sections", []):
+    def _mut(m):
+        for section in m.get("sections", []):
             if section.get("idx") == idx:
                 section["status"] = status
-                break
-        else:
+                return
+        return False
+    with _STATUS_LOCK:
+        manifest = manifestio.update(book_id, _mut)
+        if manifest is None:
             return {}
-        manifestio.save(book_id, manifest)
     _publish(book_id, "section", {"idx": idx, "status": status})
     return manifest
 
@@ -516,22 +516,23 @@ def generate_section(book_id: str, section_idx: int) -> None:
         }
         cursor += dur
 
-    # Re-read before the final write: a status transition may have landed while
-    # we were encoding, and the manifest is the single source of truth.
-    manifest = manifestio.load(book_id) or manifest
-    section = next((s for s in manifest.get("sections", [])
-                    if s.get("idx") == section_idx), section)
-    for chunk in section.get("chunks", []):
-        if chunk.get("idx") in updates:
-            chunk.update(updates[chunk["idx"]])
-    section["audio"] = audio_path
-    section["duration_ms"] = total_ms
-    section["status"] = "ready"
-    manifest["alignment"] = ("whisperx" if whisperx_chunks and
-                             whisperx_chunks == len(wavs) else "interp")
-    manifest["voice"] = voice
-    manifest["engine"] = engine()
-    manifestio.save(book_id, manifest)
+    # One read-modify-write transaction: a status transition may have landed
+    # while we were encoding, and a parallel worker's section must survive.
+    def _mutate(m):
+        sec = next((x for x in m.get("sections", [])
+                    if x.get("idx") == section_idx), section)
+        for chunk in sec.get("chunks", []):
+            if chunk.get("idx") in updates:
+                chunk.update(updates[chunk["idx"]])
+        sec["audio"] = audio_path
+        sec["duration_ms"] = total_ms
+        sec["status"] = "ready"
+        m["alignment"] = ("whisperx" if whisperx_chunks and
+                          whisperx_chunks == len(wavs) else "interp")
+        m["voice"] = voice
+        m["engine"] = engine()
+
+    manifest = manifestio.update(book_id, _mutate) or manifest
     _publish(book_id, "section", {"idx": section_idx, "status": "ready"})
     log.info("book %s section %s ready (%.1fs audio, %s timing)", book_id,
              section_idx, total_ms / 1000.0, manifest["alignment"])
