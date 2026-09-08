@@ -187,8 +187,9 @@ export default function ReaderView() {
   }, [bookId, !!manifest])
 
   // ---- auto-hiding transport --------------------------------------------
-  // The bar slides away after a few idle seconds; any tap, key or scroll
-  // reveals it again (a focused control pins it via :focus-within).
+  // The bar slides away after a few idle seconds; a tap, a key, or the
+  // cursor entering the bottom edge reveals it again (scrolling
+  // deliberately does not). :focus-within pins it while a control is used.
   const [barVisible, setBarVisible] = useState(true)
   const barTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pokeBar = useCallback(() => {
@@ -200,11 +201,18 @@ export default function ReaderView() {
     if (barTimer.current) clearTimeout(barTimer.current)
   }, [])
   useEffect(() => {
-    const events = ['pointerdown', 'keydown', 'wheel'] as const
+    const events = ['pointerdown', 'keydown'] as const
     events.forEach((e) => window.addEventListener(e, pokeBar, { passive: true }))
+    // hovering the bottom edge — where the bar lives — reveals it; scrolling
+    // deliberately does not, so the text stays the focal point
+    const onMove = (e: PointerEvent) => {
+      if (e.clientY > window.innerHeight - 110) pokeBar()
+    }
+    window.addEventListener('pointermove', onMove, { passive: true })
     pokeBar()
     return () => {
       events.forEach((e) => window.removeEventListener(e, pokeBar))
+      window.removeEventListener('pointermove', onMove)
       if (barTimer.current) clearTimeout(barTimer.current)
     }
   }, [pokeBar])
