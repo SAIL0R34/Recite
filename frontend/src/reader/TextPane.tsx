@@ -285,7 +285,7 @@ export default function TextPane({
       )}
       {!follow && (
         <button
-          className="btn btn-accent absolute bottom-4 left-1/2 -translate-x-1/2 shadow-lg"
+          className="btn btn-accent absolute bottom-[9.5rem] left-1/2 -translate-x-1/2 shadow-lg"
           onClick={() => usePlayerStore.getState().setFollow(true)}
           title="Resume following (F)"
         >
