@@ -29,6 +29,13 @@ export function subscribeToBookEvents(
       /* malformed frame — ignore */
     }
   })
+  es.addEventListener('chunk', (e) => {
+    try {
+      handlers.onChunk?.(JSON.parse((e as MessageEvent).data))
+    } catch {
+      /* ignore */
+    }
+  })
   es.addEventListener('generation', (e) => {
     try {
       handlers.onGeneration?.(JSON.parse((e as MessageEvent).data))

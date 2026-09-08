@@ -147,7 +147,12 @@ export default function ReaderView() {
       }
     }
     const off = subscribeToBookEvents(bookId, {
-      onSection: () => void reload(),
+      onSection: (e) => {
+        if (e.status === 'ready')
+          usePlayerStore.getState().clearChunkDone(e.idx)
+        void reload()
+      },
+      onChunk: (e) => usePlayerStore.getState().noteChunk(e.idx, e.chunk),
       onGeneration: () => void reload(),
     })
     let timer: ReturnType<typeof setInterval> | null = null
@@ -304,8 +309,8 @@ export default function ReaderView() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* hero */}
       <div
-        className="flex shrink-0 items-center gap-2 border-b px-3 py-2 sm:gap-4 sm:px-5 sm:py-3"
-        style={{ borderColor: 'var(--border)' }}
+        className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:gap-4 sm:px-5 sm:py-3"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
       >
         <Link to="/" className="btn btn-ghost btn-sm" title="Library">
           ←

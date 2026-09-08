@@ -21,6 +21,8 @@ export interface PlayerState {
   document: BookDocument | null
   manifest: Manifest | null
   timeline: Timeline | null
+  /** section -> chunk idxs synthesized since the last section reload */
+  chunkDone: Record<number, number[]>
   /** monotonic bump whenever the manifest is refetched (SSE/poll) */
   manifestVersion: number
   globalMs: number
@@ -38,6 +40,8 @@ export interface PlayerState {
     percent: number,
   ) => Promise<void>
   setManifest: (manifest: Manifest) => void
+  noteChunk: (sec: number, chunk: number) => void
+  clearChunkDone: (sec: number) => void
   /** merge full word timings for one section (fetched lazily);
    *  resolves to the merged manifest so callers can mirror it in local state */
   ensureTimings: (idx: number) => Promise<Manifest | null>
@@ -66,6 +70,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   document: null,
   manifest: null,
   timeline: null,
+  chunkDone: {},
   manifestVersion: 0,
   globalMs: 0,
   playing: false,
@@ -109,6 +114,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       /* section went pending again / server busy — highlighter stays off */
       return null
     }
+  },
+
+  noteChunk(sec, chunk) {
+    const cur = get().chunkDone[sec]
+    if (cur?.includes(chunk)) return
+    set({ chunkDone: { ...get().chunkDone, [sec]: [...(cur ?? []), chunk] } })
+  },
+
+  clearChunkDone(sec) {
+    if (!(sec in get().chunkDone)) return
+    const rest = { ...get().chunkDone }
+    delete rest[sec]
+    set({ chunkDone: rest })
   },
 
   setManifest(manifest) {

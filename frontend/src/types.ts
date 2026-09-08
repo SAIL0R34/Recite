@@ -120,6 +120,7 @@ export interface StatusCounts {
 
 export interface BookEventHandlers {
   onSection?: (e: { idx: number; status: string }) => void
+  onChunk?: (e: { idx: number; chunk: number }) => void
   onGeneration?: (e: { done: boolean }) => void
 }
 

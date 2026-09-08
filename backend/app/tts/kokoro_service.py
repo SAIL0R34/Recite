@@ -144,6 +144,12 @@ def synthesize(text: str, voice: str = "af_heart") -> Tuple[np.ndarray, int]:
     except Exception as e:
         raise KokoroError(f"synthesis failed: {e}") from e
     if not pieces:
+        # a wedged pipeline keeps yielding nothing; drop it so the next
+        # attempt builds a fresh one
+        try:
+            del _worker_local.pipeline
+        except AttributeError:
+            pass
         raise KokoroError("kokoro produced no audio")
     return np.concatenate(pieces).astype(np.float32), SAMPLE_RATE
 

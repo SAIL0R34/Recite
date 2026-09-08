@@ -315,6 +315,9 @@ function SectionView({
   const [limit, setLimit] = useState(CAP)
   useEffect(() => setLimit(CAP), [manSection.idx])
   const more = manSection.chunks.length > limit
+  // chunks streaming in via SSE: grey -> black without a manifest refetch
+  const chunkDone = usePlayerStore((s) => s.chunkDone[manSection.idx])
+  const doneSet = useMemo(() => new Set(chunkDone ?? []), [chunkDone])
   const chunksByPara = useMemo(() => {
     const m = new Map<number, ManifestChunk[]>()
     for (const c of more ? manSection.chunks.slice(0, limit) : manSection.chunks) {
@@ -355,6 +358,7 @@ function SectionView({
           chunks={chunksByPara.get(p.idx) ?? []}
           sectionStartMs={sectionStartMs}
           sectionId={docSection.idx}
+          doneSet={doneSet}
           marks={hlIndex.get(`${docSection.idx}:${p.idx}`)}
         />
       ))}
@@ -373,6 +377,7 @@ function SectionView({
 function ParagraphView({
   para,
   chunks,
+  doneSet = new Set<number>(),
   sectionStartMs,
   sectionId,
   marks,
@@ -381,6 +386,7 @@ function ParagraphView({
   chunks: ManifestChunk[]
   sectionStartMs: number
   sectionId: number
+  doneSet?: Set<number>
   marks?: Map<number, Highlight>
 }) {
   const nodes: React.ReactNode[] = []
@@ -443,14 +449,15 @@ function ParagraphView({
   } else {
     for (const c of chunks) {
       const ready = c.status === 'ready' && !!c.words
-      if (!ready) anyPending = true
+      const done = ready || doneSet.has(c.idx)
+      if (!done) anyPending = true
       const [a, b] = c.sentence_range
       let k = 0
       for (const s of para.sentences) {
         if (s.idx < a || s.idx > b) continue
         for (const token of s.words) {
           const t = ready ? c.words![k++] ?? null : null
-          pushToken(token, t, c.idx, k - 1, !ready)
+          pushToken(token, t, c.idx, k - 1, !done)
         }
       }
     }

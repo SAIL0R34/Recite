@@ -413,6 +413,10 @@ def _set_status(book_id: str, idx, status: str) -> dict:
         for section in m.get("sections", []):
             if section.get("idx") == idx:
                 section["status"] = status
+                if status == "failed":
+                    # chunk statuses were mid-flight; a retry starts clean
+                    for c in section.get("chunks", []):
+                        c["status"] = "pending"
                 return
         return False
     with _STATUS_LOCK:
@@ -421,6 +425,26 @@ def _set_status(book_id: str, idx, status: str) -> dict:
             return {}
     _publish(book_id, "section", {"idx": idx, "status": status})
     return manifest
+
+
+def _mark_chunks(book_id: str, section_idx: int, chunk_idxs: List[int]) -> None:
+    """Mid-synthesis chunk statuses: 'ready' before word timings exist so the
+    reader can stream grey->black progress; the section-ready write replaces
+    these with full word data, and a failure resets them to 'pending'."""
+    done = set(chunk_idxs)
+
+    def _mut(m):
+        changed = False
+        for s in m.get("sections", []):
+            if s.get("idx") != section_idx:
+                continue
+            for c in s.get("chunks", []):
+                if c.get("idx") in done and c.get("status") != "ready":
+                    c["status"] = "ready"
+                    changed = True
+        return changed
+
+    manifestio.update(book_id, _mut)
 
 
 def live_status(book_id: str) -> dict:
@@ -464,16 +488,36 @@ def generate_section(book_id: str, section_idx: int) -> None:
 
     _set_status(book_id, section_idx, "synthesizing")
     wavs = []
+    synthesized: List[int] = []
     for chunk in section.get("chunks", []):
         text = (chunk.get("text") or "").strip()
-        wav = encode.chunk_wav_path(work_dir, chunk.get("idx") or 0)
+        cidx = chunk.get("idx") or 0
+        wav = encode.chunk_wav_path(work_dir, cidx)
+        audio = None
         if text:
-            audio, sr = kokoro_service.synthesize(text, voice)
+            # One flaky chunk must not sink the chapter: retry once (kokoro_
+            # service hands out a fresh pipeline after an empty yield), then
+            # fall back to silence and keep going.
+            for attempt in (0, 1):
+                try:
+                    audio, sr = kokoro_service.synthesize(text, voice)
+                    break
+                except kokoro_service.KokoroError as e:
+                    log.warning("book %s sec %s chunk %s: %s",
+                                book_id, section_idx, cidx, e)
+            if audio is None:
+                audio = kokoro_service.silence(max(0.3, len(text.split()) * 0.35))
+                sr = kokoro_service.SAMPLE_RATE
         else:  # keep chunk/wav alignment even for an empty chunk
             sr = kokoro_service.SAMPLE_RATE
             audio = np.zeros(int(0.05 * sr), dtype=np.float32)
         encode.write_wav(wav, audio, sr)
         wavs.append((chunk, wav, encode.wav_duration_ms(wav)))
+        synthesized.append(cidx)
+        _publish(book_id, "chunk", {"idx": section_idx, "chunk": cidx})
+        if len(synthesized) % 20 == 0:
+            _mark_chunks(book_id, section_idx, synthesized)
+    _mark_chunks(book_id, section_idx, synthesized)
 
     # Per-chunk timings while the WAVs still exist. Offsets are applied after
     # encoding, once the concatenated section file fixes the chunk order.
