@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from .. import config, manifestio
+from .. import config, events, manifestio
 from ..db import db
 from ..ingest.service import IngestError, ingest_file
 from ..tts import gen_queue
@@ -150,6 +150,21 @@ def get_audio(book_id: str, fname: str):
     if not p.exists() or p.is_dir():
         raise HTTPException(404, "audio not generated yet")
     return FileResponse(p, media_type="audio/mpeg", filename=fname)
+
+
+@router.post("/{book_id}/rechunk")
+def rechunk(book_id: str):
+    """Re-plan chunks under the current rules, keeping audio for chunks
+    whose text is unchanged. Sections with stale slices re-enter the queue."""
+    from ..ingest import rechunk as rechunk_module
+    _require(book_id)
+    try:
+        report = rechunk_module.rechunk_book(book_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    for sec in (report.get("reset_idxs") or []):
+        events.publish(book_id, "section", {"idx": sec, "status": "pending"})
+    return {"ok": True, **report}
 
 
 @router.get("/{book_id}/status")

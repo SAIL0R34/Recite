@@ -34,6 +34,17 @@ async def startup():
     except Exception as e:  # TTS optional at boot; ingest must work regardless
         import logging
         logging.getLogger("recite").warning("gen queue unavailable: %s", e)
+    try:
+        from .ingest import rechunk
+        for r in rechunk.recheck_all():
+            import logging
+            logging.getLogger("recite").info(
+                "rechunked %s: kept %d/%d sections, %d chunks to regenerate",
+                r["book_id"], r["sections_kept"], r["sections_total"],
+                r["sections_reset"])
+    except Exception as e:
+        import logging
+        logging.getLogger("recite").warning("startup rechunk failed: %s", e)
 
 
 # ------------------------------------------------------------- static SPA

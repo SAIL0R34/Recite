@@ -63,6 +63,12 @@ CREATE INDEX IF NOT EXISTS bookmarks_book ON bookmarks(book_id);
 CREATE INDEX IF NOT EXISTS highlights_book ON highlights(book_id);
 """
 
+#: columns added after the first release (ALTER, not CREATE) — idempotent
+_MIGRATIONS = [
+    "ALTER TABLE progress ADD COLUMN active INTEGER DEFAULT 0",
+    "ALTER TABLE progress ADD COLUMN section_start_ms INTEGER DEFAULT 0",
+]
+
 
 class Database:
     def __init__(self, path):
@@ -83,6 +89,11 @@ class Database:
         with self._lock:
             self._conn = self._connect()
             self._conn.executescript(SCHEMA)
+            for ddl in _MIGRATIONS:
+                try:
+                    self._conn.execute(ddl)
+                except sqlite3.OperationalError:
+                    pass           # column already exists
             self._conn.commit()
 
     # ---------------------------------------------------------- books
@@ -144,15 +155,19 @@ class Database:
         return dict(row) if row else None
 
     def set_progress(self, book_id: str, section_idx: int, word_idx: int,
-                     ms_into_section: int, percent: float) -> None:
+                     ms_into_section: int, percent: float,
+                     active: int = 0, section_start_ms: int = 0) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO progress(book_id,section_idx,word_idx,ms_into_section,percent,updated_at)"
-                " VALUES(?,?,?,?,?,?)"
+                "INSERT INTO progress(book_id,section_idx,word_idx,"
+                "ms_into_section,percent,updated_at,active,section_start_ms)"
+                " VALUES(?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(book_id) DO UPDATE SET section_idx=excluded.section_idx,"
                 " word_idx=excluded.word_idx, ms_into_section=excluded.ms_into_section,"
-                " percent=excluded.percent, updated_at=excluded.updated_at",
-                (book_id, section_idx, word_idx, ms_into_section, percent, time.time()))
+                " percent=excluded.percent, updated_at=excluded.updated_at,"
+                " active=excluded.active, section_start_ms=excluded.section_start_ms",
+                (book_id, section_idx, word_idx, ms_into_section, percent,
+                 time.time(), 1 if active else 0, section_start_ms))
             self._conn.commit()
 
     # ------------------------------------------------------ bookmarks

@@ -244,7 +244,9 @@ export default function ReaderView() {
       if (p) await putProgress(bookId, p).catch(() => {})
     }
     const interval = setInterval(() => {
-      if (usePlayerStore.getState().playing) void save()
+      // save whenever the position moved — also while paused, so a
+      // click-to-seek or pause position survives a refresh
+      if (dirtyRef.current) void save()
     }, 2000)
     // save on the playing → paused transition (covers pause + ended)
     let wasPlaying = false

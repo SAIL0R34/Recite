@@ -244,14 +244,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       word_idx: wordIdx,
       ms_into_section: pos.offset,
       percent,
+      active: get().playing ? 1 : 0,
+      section_start_ms: timeline.byIndex[pos.section]?.startMs ?? 0,
     }
   },
 
   resumeFrom(p) {
     const { timeline } = get()
     if (!timeline) return
-    const g = positionToGlobal(timeline, p.section_idx, p.ms_into_section)
-    get().seek(g)
+    const e = timeline.byIndex[p.section_idx]
+    // The section must have audio to land on; otherwise hop to the nearest
+    // ready one so a refresh never parks the reader on dead air.
+    const target = e?.ready
+      ? { section: p.section_idx, offset: p.ms_into_section ?? 0 }
+      : { section: p.section_idx, offset: 0 }
+    const g = positionToGlobal(timeline, target.section, target.offset)
+    if (e?.ready) {
+      get().seek(g)
+      if (p.active) get().play()
+      return
+    }
+    const near = engine.nearestReady(p.section_idx)
+    if (near !== null) {
+      const ne = timeline.byIndex[near]
+      if (ne) get().seek(ne.startMs)
+    }
+    // nothing ready anywhere: stay parked at the stored position
   },
 }))
 

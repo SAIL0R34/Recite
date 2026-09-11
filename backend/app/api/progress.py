@@ -14,13 +14,19 @@ class Progress(BaseModel):
     word_idx: int = 0
     ms_into_section: int = 0
     percent: float = 0
+    #: was the player playing when this snapshot was taken?
+    active: int = 0
+    #: global-ms start of section_idx in the manifest that produced it —
+    #: lets resume skip re-deriving the global axis
+    section_start_ms: int = 0
 
 
 def _put(book_id: str, body: Progress) -> dict:
     if not db.get_book(book_id):
         raise HTTPException(404, "no such book")
     db.set_progress(book_id, body.section_idx, body.word_idx,
-                    body.ms_into_section, body.percent)
+                    body.ms_into_section, body.percent,
+                    active=body.active, section_start_ms=body.section_start_ms)
     return {"ok": True}
 
 

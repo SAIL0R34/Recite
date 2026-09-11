@@ -199,6 +199,53 @@ def make_sentences(text: str) -> List[Sentence]:
     return [Sentence(i, s, words_of(s)) for i, s in enumerate(split_sentences(text))]
 
 
+def _reindex(paragraph: Paragraph) -> None:
+    for i, s in enumerate(paragraph.sentences):
+        s.idx = i
+
+
+def stitch_open_paragraphs(section: Section) -> List[int]:
+    """Merge a paragraph whose text ends mid-sentence into the next one.
+
+    PDF column and page breaks split one sentence into two ``_Line`` groups
+    whose geometry then looks like a paragraph break (typical: the line
+    ends short, the next starts a new block). Narration must not stop
+    mid-clause for that, so when paragraph *a*'s last sentence ends with no
+    terminal punctuation and the next paragraph *b* opens with a lowercase
+    word, ``b`` is absorbed into ``a`` (re-indexed). Returns removed
+    paragraph idxs. The lowercase test keeps headings above chapters from
+    merging into prose.
+    """
+    from .chunker import ends_terminal
+
+    merged: List[Paragraph] = []
+    removed: List[int] = []
+    i = 0
+    paras = section.paragraphs
+    while i < len(paras):
+        a = paras[i]
+        if a.no_tts or not a.sentences:
+            merged.append(a)
+            i += 1
+            continue
+        last = a.sentences[-1].text.rstrip()
+        while (i + 1 < len(paras)
+               and not ends_terminal(last)
+               and not paras[i + 1].no_tts
+               and paras[i + 1].sentences
+               and paras[i + 1].sentences[0].text[:1].islower()):
+            b = paras[i + 1]
+            a.sentences.extend(b.sentences)
+            _reindex(a)
+            last = a.sentences[-1].text.rstrip()
+            removed.append(b.idx)
+            i += 1
+        merged.append(a)
+        i += 1
+    section.paragraphs = merged
+    return removed
+
+
 def paragraph_from_text(text: str, page: Optional[int],
                         anchor: Optional[str] = None,
                         no_tts: bool = False, idx: int = 0) -> Paragraph:

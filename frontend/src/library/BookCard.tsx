@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { BookSummary } from '../types'
 import { useLibraryStore } from '../stores/libraryStore'
+import { rechunkBook } from '../api/client'
 
 function Ring({ percent }: { percent: number }) {
   const r = 20
@@ -44,6 +46,8 @@ function Ring({ percent }: { percent: number }) {
 export default function BookCard({ book }: { book: BookSummary }) {
   const navigate = useNavigate()
   const remove = useLibraryStore((s) => s.remove)
+  const refresh = useLibraryStore((s) => s.refresh)
+  const [rechucking, setRechucking] = useState(false)
   const warn = (book.warnings?.length ?? 0) > 0
 
   return (
@@ -84,6 +88,33 @@ export default function BookCard({ book }: { book: BookSummary }) {
         )}
         <button
           className="btn btn-ghost btn-sm ml-auto"
+          title={rechucking
+            ? 'Re-chunking\u2026'
+            : 'Re-break narration at sentence boundaries (keeps existing audio)'}
+          disabled={rechucking}
+          onClick={async (e) => {
+            e.stopPropagation()
+            setRechucking(true)
+            try {
+              const r = await rechunkBook(book.id)
+              window.alert(
+                `Re-broke ${r.sections_total} sections at sentence boundaries. ` +
+                  (r.sections_reset
+                    ? `${r.sections_reset} section(s) need new audio and are regenerating now.`
+                    : 'All audio was reused — nothing to regenerate.'),
+              )
+            } catch (err) {
+              window.alert(`Re-chunk failed: ${(err as Error).message}`)
+            } finally {
+              setRechucking(false)
+              void refresh()
+            }
+          }}
+        >
+          {rechucking ? '⏳' : '↺'}
+        </button>
+        <button
+          className="btn btn-ghost btn-sm"
           title="Remove from library"
           onClick={(e) => {
             e.stopPropagation()

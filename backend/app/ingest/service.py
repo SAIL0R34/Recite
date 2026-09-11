@@ -21,8 +21,8 @@ from typing import List, Optional, Tuple
 
 from .. import config, db as _db_module, manifestio
 from . import epub as epub_module, pdf as pdf_module
-from .chunker import plan_sections
-from .model import Document, Extraction
+from .chunker import RULE_VERSION, plan_sections
+from .model import Document, Extraction, stitch_open_paragraphs
 
 ENGINE = "kokoro-0.9.4"
 DEFAULT_VOICE = "af_heart"
@@ -164,6 +164,10 @@ def ingest_file(path: str) -> dict:
     extraction: Extraction = _extract(str(src), fmt)
     warnings: List[str] = list(extraction.warnings)
     title = (extraction.title or "").strip() or _title_from_path(str(src))
+    for sec in extraction.sections:
+        # PDF geometry can split one sentence across a "paragraph"; narration
+        # must not stop mid-clause for a column break
+        stitch_open_paragraphs(sec)
     extraction.sections, front = _presplit(extraction.sections)
     if front:
         warnings.append("front matter kept as text only (no narration)")

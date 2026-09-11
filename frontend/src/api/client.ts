@@ -123,6 +123,10 @@ export const putProgress = (id: string, p: Progress) =>
     body: j(p),
   })
 
+/** Re-plan chunks under the current rules (keeps audio of unchanged text). */
+export const rechunkBook = (id: string): Promise<Record<string, unknown>> =>
+  request(`/api/books/${encodeURIComponent(id)}/rechunk`, { method: 'POST' })
+
 /** Kick the TTS queue; boostSection prioritises one section (usually current). */
 export const requestGeneration = (id: string, boostSection?: number) => {
   const q = boostSection == null ? '' : `?boost=${boostSection}`

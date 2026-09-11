@@ -4,9 +4,13 @@ Determinism matters: identical input text must produce a byte-identical
 manifest, because the TTS worker caches audio per chunk index.
 
 Rules (approved plan):
-  * group sentences *within* a paragraph up to ~MAX_CHUNK_CHARS
+  * consecutive sentences are merged until one ends with terminal
+    punctuation (``. ! ? — : ;``, trailing quotes/brackets allowed) — no
+    chunk ever breaks mid-sentence, so narration breathes where the
+    author put punctuation and nothing else (TTS fluidity)
+  * group merged sentences *within* a paragraph up to ~MAX_CHUNK_CHARS
   * a paragraph break is always a chunk boundary (chunks never span paragraphs)
-  * a single sentence over MAX_SENTENCE_CHARS is split at clause punctuation
+  * a merged group over MAX_SENTENCE_CHARS is split at clause punctuation
     (comma / semicolon / colon / dash) into pseudo-sentences, each of which
     becomes a chunk of its own
   * paragraphs flagged ``no_tts`` (formula/code) are skipped entirely
@@ -20,6 +24,24 @@ from typing import Iterable, List, Tuple
 MAX_CHUNK_CHARS = 300
 MAX_SENTENCE_CHARS = 500
 FORMULA_MARKER = "[formula]"
+
+#: RULE_VERSION — bump when chunking rules change; manifests carry the version
+#: they were planned under, and startup re-chunks anything older (audio whose
+#: chunk text is unchanged is kept; see app.ingest.rechunk).
+RULE_VERSION = 2
+
+#: a chunk may only end at one of these (trailing quotes/brackets allowed).
+#: The blessed set: . , ! ? — : ;
+_TERMINALS = ",.!?\u2014:;"
+_TRAILERS = "\"\u201d\u2019')\u201d]"
+
+
+def ends_terminal(text: str) -> bool:
+    """True when *text* ends in sentence- or clause-level punctuation."""
+    t = text.rstrip()
+    while t and t[-1] in _TRAILERS:
+        t = t[:-1].rstrip()
+    return bool(t) and t[-1] in _TERMINALS
 
 # ---------------------------------------------------------------- normalize
 
@@ -117,6 +139,7 @@ def looks_like_code(text: str) -> bool:
 
 # ---------------------------------------------------------------- sentence splits
 
+#: split points for an over-long unit: every break the reader may pause at.
 _CLAUSE_SPLIT = re.compile(r"(?<=[,;:])\s+|(?<=[\u2014\u2013])\s+")
 
 
@@ -135,51 +158,78 @@ def _word_bounded_split(sentence: str) -> List[str]:
 
 
 def split_long_sentence(sentence: str) -> List[str]:
-    """An over-long sentence becomes pseudo-sentences, else ``[sentence]``."""
+    """An over-long sentence becomes pseudo-sentences, else ``[sentence]``.
+
+    Every split lands after blessed punctuation, so each piece ends at a
+    pause point; only the final piece may trail on (when the source
+    sentence itself did)."""
     if len(sentence) <= MAX_SENTENCE_CHARS:
         return [sentence]
     parts = [p.strip() for p in _CLAUSE_SPLIT.split(sentence) if p and p.strip()]
     if len(parts) < 2:
-        parts = _word_bounded_split(sentence)
-    return parts or [sentence]
+        return _word_bounded_split(sentence)
+    # fold pieces whose text ended at NO pause punctuation (a piece boundary
+    # the regex found but that carries no pause) into the next one
+    merged: List[str] = []
+    for p in parts:
+        if merged and not ends_terminal(merged[-1]):
+            merged[-1] = f"{merged[-1]} {p}"
+        else:
+            merged.append(p)
+    return merged or [sentence]
+
+
+def merge_units(sentences: List[str]) -> List[Tuple[int, int, str]]:
+    """Merge consecutive sentences until one ends at terminal punctuation.
+
+    Returns ``[(first_idx, last_idx, text), ...]``. A run with no terminal
+    punctuation anywhere (a heading) merges into a single unit.
+    """
+    units: List[Tuple[int, int, str]] = []
+    cur: List[str] = []
+    start = 0
+    for i, sentence in enumerate(sentences):
+        if not cur:
+            start = i
+        cur.append(sentence)
+        if ends_terminal(sentence):
+            units.append((start, i, " ".join(cur)))
+            cur = []
+    if cur:
+        units.append((start, len(sentences) - 1, " ".join(cur)))
+    return units
 
 
 def chunk_paragraph(sentences: Iterable[str]) -> List[Tuple[int, int, str]]:
     """Group one paragraph's sentence texts into chunks.
 
-    Returns ``[(first_sentence_idx, last_sentence_idx, text), \u2026]``;
+    Sentences merge into units ending at terminal punctuation first (a chunk
+    never breaks mid-sentence); units then group up to MAX_CHUNK_CHARS.
+
+    Returns ``[(first_sentence_idx, last_sentence_idx, text), …]``;
     indices are positions inside *sentences*, so a chunk built from
-    pseudo-sentences keeps that sentence's index for both ends.
+    pseudo-sentences keeps that unit's indices for both ends.
     """
     sentences = list(sentences)
     out: List[Tuple[int, int, str]] = []
-    buf: List[str] = []
-    start = 0
+    buf: List[Tuple[int, int, str]] = []   # (s0, s1, text) units
 
-    def flush(end_index: int) -> None:
+    def flush() -> None:
         if buf:
-            out.append((start, end_index, " ".join(buf)))
+            out.append((buf[0][0], buf[-1][1], " ".join(u[2] for u in buf)))
             buf.clear()
 
-    for i, sentence in enumerate(sentences):
-        pieces = split_long_sentence(sentence)
-        if len(pieces) > 1:                      # oversized sentence: one chunk each
-            flush(i - 1)
+    for s0, s1, text in merge_units(sentences):
+        pieces = split_long_sentence(text)
+        if len(pieces) > 1:                # oversized unit: one chunk each
+            flush()
             for piece in pieces:
-                out.append((i, i, piece))
-            start = i + 1
+                out.append((s0, s1, piece))
             continue
-        piece = pieces[0]
-        if not buf:
-            start, buf = i, [piece]
-            continue
-        joined = " ".join(buf + [piece])
-        if len(joined) > MAX_CHUNK_CHARS:
-            flush(i - 1)
-            start, buf = i, [piece]
-        else:
-            buf.append(piece)
-    flush(len(sentences) - 1)
+        if buf and len(" ".join([u[2] for u in buf] + [text])) > MAX_CHUNK_CHARS:
+            flush()
+        buf.append((s0, s1, text))
+    flush()
     return out
 
 

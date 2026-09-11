@@ -91,6 +91,10 @@ export interface Progress {
   word_idx: number
   ms_into_section: number
   percent: number
+  /** was the player playing when this snapshot was saved */
+  active?: number
+  /** global-ms start of section_idx in the manifest that produced it */
+  section_start_ms?: number
 }
 
 export interface Bookmark {

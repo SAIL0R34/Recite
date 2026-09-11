@@ -1,7 +1,8 @@
 """Text layer: sentence splitting, normalization, chunk planning."""
 from app.ingest.chunker import (FORMULA_MARKER, MAX_CHUNK_CHARS,
-                                chunk_paragraph, is_formula_text,
-                                looks_like_code, normalize_text,
+                                chunk_paragraph, ends_terminal,
+                                is_formula_text, looks_like_code,
+                                merge_units, normalize_text,
                                 plan_sections, split_long_sentence,
                                 symbol_density, words_of)
 from app.ingest.model import split_sentences
@@ -124,3 +125,49 @@ def test_plan_sections_is_deterministic():
     a = plan_sections(_sections_with_a_formula())
     b = plan_sections(_sections_with_a_formula())
     assert a == b
+
+
+# ------------------------------------------------------- sentence-boundary rules
+
+def test_ends_terminal_blessed_set():
+    for t in ("Hi.", "Hi!", "Hi?", "Hi—", "Hi:", "Hi;", "Hi,",
+              "talk.”", "yes)."):
+        assert ends_terminal(t), t
+    assert not ends_terminal("no ending")
+    assert not ends_terminal("199.5")     # digits: no pause
+    assert not ends_terminal("")
+
+
+def test_merge_units_keeps_sentences_whole():
+    sents = ["The empire lay", "open to all.", "A new war.", "It began,"]
+    units = merge_units(sents)
+    # first two merge into one unit (mid-sentence break disallowed)...
+    assert units[0] == (0, 1, "The empire lay open to all.")
+    assert units[1] == (2, 2, "A new war.")
+    # trailing comma-end also closes a unit (blessed punctuation)
+    assert units[2] == (3, 3, "It began,")
+
+
+def test_merge_units_run_without_terminals():
+    units = merge_units(["Just", "some", "words"])
+    assert len(units) == 1
+    assert units[0] == (0, 2, "Just some words")
+
+
+def test_chunk_never_ends_mid_sentence():
+    # many short sentences; every chunk (except an open trailing run) must
+    # end on blessed punctuation
+    sents = [f"Clause {i} keeps going for a while." for i in range(40)]
+    sents.append("A trailing fragment")          # no terminal anywhere
+    for first, last, text in chunk_paragraph(sents[:-1]):
+        assert ends_terminal(text), text
+    *_, last_chunk = chunk_paragraph(sents)
+    assert last_chunk[2].endswith("fragment")    # open run stays whole
+
+
+def test_chunk_merges_until_terminal_even_across_sentences():
+    # "The empire lay open to all." must never be split around
+    # "open to all" — a non-terminal first sentence merges with the next
+    chunks = chunk_paragraph(["The empire lay", "open to all."])
+    assert len(chunks) == 1
+    assert chunks[0] == (0, 1, "The empire lay open to all.")

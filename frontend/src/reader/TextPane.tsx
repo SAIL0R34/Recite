@@ -201,7 +201,19 @@ export default function TextPane({
     }
     const onClick = (e: MouseEvent) => {
       const t = (e.target as HTMLElement).closest?.('[data-hl]')
-      if (t) void useHighlightStore.getState().remove(t.getAttribute('data-hl')!)
+      if (t) {
+        void useHighlightStore.getState().remove(t.getAttribute('data-hl')!)
+        return
+      }
+      // Click-to-seek: a plain click on a timed word jumps the narration to
+      // its onset (data-s is global ms). Selection drags (highlighting) never
+      // reach here; words of pending audio have no data-s and no seek.
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) return
+      const w = (e.target as HTMLElement).closest?.('[data-s]') as HTMLElement | null
+      if (!w || !w.classList.contains('kw')) return
+      const s = Number(w.dataset.s)
+      if (Number.isFinite(s)) usePlayerStore.getState().seek(s)
     }
     el.addEventListener('mouseup', onMouseUp)
     el.addEventListener('click', onClick)
