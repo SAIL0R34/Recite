@@ -215,6 +215,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentProgress() {
     const { timeline, manifest, globalMs, percent } = get()
     if (!timeline || !manifest) return null
+    // Percent is derived, never stored: global position over total audio
+    // length. state.percent alone would sit frozen at the value we arrived
+    // with, so the ring and the library card never rose.
+    const pct =
+      timeline.totalMs > 0
+        ? Math.min(100, Math.max(0, (globalMs / timeline.totalMs) * 100))
+        : percent
     const pos = timeline
       ? engine.positionFor(globalMs)
       : { section: 0, offset: 0 }
@@ -243,7 +250,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       section_idx: pos.section,
       word_idx: wordIdx,
       ms_into_section: pos.offset,
-      percent,
+      percent: pct,
       active: get().playing ? 1 : 0,
       section_start_ms: timeline.byIndex[pos.section]?.startMs ?? 0,
     }
@@ -275,8 +282,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
 // Engine → store plumbing (module scope: registered once).
 engine.onTick((ms) => {
-  if (ms !== usePlayerStore.getState().globalMs) {
-    usePlayerStore.setState({ globalMs: ms })
+  const st = usePlayerStore.getState()
+  if (ms !== st.globalMs) {
+    // ring tracks position live, one decimal to avoid per-frame re-renders
+    const total = st.timeline?.totalMs ?? 0
+    const pct =
+      total > 0 ? Math.round(Math.min(100, (ms / total) * 1000)) / 10 : st.percent
+    usePlayerStore.setState({ globalMs: ms, percent: pct })
   }
 })
 engine.onState(({ playing, sectionIdx }) => {
