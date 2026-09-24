@@ -18,6 +18,7 @@ import { useHighlightStore } from '../stores/highlightStore'
 import { engine } from '../player/engine'
 import TextPane from './TextPane'
 import TransportBar from './TransportBar'
+import SearchPopover from './SearchPopover'
 import ChapterMenu from './ChapterMenu'
 import BookmarkDrawer from './BookmarkDrawer'
 import AppearancePanel from './AppearancePanel'
@@ -33,6 +34,7 @@ export default function ReaderView() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [modelLoading, setModelLoading] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const store = usePlayerStore()
   const timeline = store.timeline
@@ -332,9 +334,14 @@ export default function ReaderView() {
         case 'F':
           st.setFollow(!st.followMode)
           break
+        case '/':
+          e.preventDefault()
+          setSearchOpen(true)
+          break
         case 'Escape':
           setDrawerOpen(false)
           setAppearanceOpen(false)
+          setSearchOpen(false)
           break
       }
     }
@@ -393,6 +400,15 @@ export default function ReaderView() {
         </button>
         <PercentRing percent={percent} />
         {timeline && <ChapterMenu timeline={timeline} />}
+        {doc && manifest && timeline && (
+          <SearchPopover
+            doc={doc}
+            manifest={manifest}
+            timeline={timeline}
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+          />
+        )}
         <button
           className="btn btn-sm"
           onClick={() => setAppearanceOpen((v) => !v)}

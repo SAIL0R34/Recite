@@ -116,6 +116,20 @@ body {
   animation: none;
 }
 
+/* search result lands on this paragraph */
+.search-flash {
+  animation: search-flash 1.4s ease-out;
+}
+
+@keyframes search-flash {
+  0%, 60% {
+    background: color-mix(in srgb, var(--hl) 55%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 @keyframes recite-pulse {
   0%, 100% {
     opacity: 0.5;
