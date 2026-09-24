@@ -131,6 +131,7 @@ export interface BookEventHandlers {
   onSection?: (e: { idx: number; status: string }) => void
   onChunk?: (e: { idx: number; chunk: number }) => void
   onGeneration?: (e: { done: boolean }) => void
+  onModel?: (e: { state: 'downloading' | 'ready' }) => void
 }
 
 /** user-marked passage; anchored by (section, paragraph, token range) */

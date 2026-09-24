@@ -10,6 +10,7 @@ export default function LibraryView() {
   const error = useLibraryStore((s) => s.error)
   const dialogOpen = useLibraryStore((s) => s.dialogOpen)
   const openDialog = useLibraryStore((s) => s.openDialog)
+  const adding = useLibraryStore((s) => s.adding)
 
   useEffect(() => {
     void useLibraryStore.getState().refresh()
@@ -79,9 +80,18 @@ export default function LibraryView() {
             Your library is empty. Add a PDF or EPUB from{' '}
             <code>~/Documents/BOOKS</code>.
           </p>
-          <button className="btn btn-accent" onClick={openDialog}>
-            + Add your first book
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button className="btn btn-accent" onClick={openDialog}>
+              + Add your first book
+            </button>
+            <button
+              className="btn"
+              disabled={adding}
+              onClick={() => void useLibraryStore.getState().addSample()}
+            >
+              {adding ? 'Adding…' : 'Try the sample book'}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

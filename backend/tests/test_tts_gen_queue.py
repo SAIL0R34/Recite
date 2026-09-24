@@ -60,6 +60,7 @@ def _reset_queue():
     gen_queue._COLD.clear()
     gen_queue._RETRY.clear()
     gen_queue._active_book = None
+    gen_queue._MODEL_ANNOUNCED.clear()
 
 
 @pytest.fixture()

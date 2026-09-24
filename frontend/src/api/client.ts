@@ -79,6 +79,12 @@ export const addBook = (path: string) =>
     body: j({ path }),
   })
 
+/** Add the bundled public-domain sample (Alice) — idempotent by path. */
+export const addSample = () =>
+  request<{ book: BookSummary; already_present: boolean }>('/api/books/sample', {
+    method: 'POST',
+  })
+
 export const deleteBook = (id: string) =>
   request(`/api/books/${encodeURIComponent(id)}`, { method: 'DELETE' })
 

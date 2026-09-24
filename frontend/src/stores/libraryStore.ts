@@ -26,6 +26,7 @@ interface LibraryState {
   closeDialog: () => void
   refreshBrowse: () => Promise<void>
   addByPath: (path: string) => Promise<boolean>
+  addSample: () => Promise<void>
   toast: (kind: Toast['kind'], msg: string) => void
   dismissToast: (id: number) => void
 }
@@ -90,6 +91,25 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // 422/415 refusal (image-heavy, unreadable, …): surface backend detail.
       set({ adding: false, addError: (e as Error).message })
       return false
+    }
+  },
+
+  async addSample() {
+    if (get().adding) return
+    set({ adding: true, addError: null })
+    try {
+      const { already_present } = await api.addSample()
+      set({ adding: false })
+      await get().refresh()
+      get().toast(
+        'info',
+        already_present
+          ? 'Sample book is already in your library.'
+          : 'Sample added — generating audio in the background.',
+      )
+    } catch (e) {
+      set({ adding: false })
+      get().toast('error', (e as Error).message)
     }
   },
 

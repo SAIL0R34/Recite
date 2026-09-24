@@ -43,5 +43,12 @@ export function subscribeToBookEvents(
       /* ignore */
     }
   })
+  es.addEventListener('model', (e) => {
+    try {
+      handlers.onModel?.(JSON.parse((e as MessageEvent).data))
+    } catch {
+      /* ignore */
+    }
+  })
   return () => es.close()
 }

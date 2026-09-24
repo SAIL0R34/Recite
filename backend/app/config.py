@@ -49,6 +49,9 @@ TTS_RETRIES = int(os.environ.get("RECITE_TTS_RETRIES", "2"))
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 
+# Bundled public-domain sample book for the empty-library first run.
+SAMPLE_EPUB = Path(__file__).resolve().parent / "assets" / "sample.epub"
+
 DEFAULT_SETTINGS = {
     "voice": "af_heart",
     "theme": "sepia",

@@ -41,6 +41,9 @@ _QUEUE: "queue.PriorityQueue" = queue.PriorityQueue()
 _WORKERS: list = []      # live worker threads (bounded by config.TTS_WORKERS)
 _LOCK = threading.Lock()
 _STATUS_LOCK = threading.Lock()
+# One-shot guard for the first-run 'model downloading' announcement: many
+# sections can pass the check below while the first pipeline still builds.
+_MODEL_ANNOUNCED = threading.Event()
 _live: set = set()    # (book_id, idx) generating right now
 _queued: set = set()  # (book_id, idx) queued, not yet started
 _active_book: Optional[str] = None
@@ -581,6 +584,16 @@ def generate_section(book_id: str, section_idx: int) -> None:
     work_dir = encode.prepare_work_dir(book_dir, section_idx)
 
     _set_status(book_id, section_idx, "synthesizing")
+    # First synthesis on a cold machine pulls the ~330MB model; say so once
+    # on the book's event channel so the reader can show it.
+    if not kokoro_service.pipeline_ready():
+        with _LOCK:
+            first = not _MODEL_ANNOUNCED.is_set()
+            _MODEL_ANNOUNCED.set()
+        if first:
+            _publish(book_id, "model", {"state": "downloading"})
+            kokoro_service.on_pipeline_ready(
+                lambda b=book_id: _publish(b, "model", {"state": "ready"}))
     # Chunks synthesize CONCURRENTLY on the shared pool: the section at the
     # reader's cursor — the one they are waiting on — gets every lane.
     chunk_order = [c.get("idx") or 0 for c in section.get("chunks", [])]

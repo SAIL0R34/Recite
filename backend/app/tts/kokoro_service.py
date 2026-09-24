@@ -29,6 +29,32 @@ SAMPLE_RATE = 24000
 _worker_local = threading.local()
 _pipeline_lock = threading.Lock()
 _first_pipeline_built = threading.Event()
+# Set only after a KPipeline finished building (the ~330MB download happens
+# inside that construction, so _first_pipeline_built alone cannot mean ready).
+_pipeline_ready = threading.Event()
+_ready_cbs: list = []
+_cb_lock = threading.Lock()
+
+
+def pipeline_ready() -> bool:
+    """True once at least one pipeline is built and the model is on disk."""
+    return _pipeline_ready.is_set()
+
+
+def on_pipeline_ready(cb) -> None:
+    """Run cb() once when the first pipeline finishes building — immediately
+    if it already has. Used to end the 'model downloading' announcement."""
+    fire = False
+    with _cb_lock:
+        if _pipeline_ready.is_set():
+            fire = True
+        else:
+            _ready_cbs.append(cb)
+    if fire:
+        try:
+            cb()
+        except Exception:
+            pass
 
 
 
@@ -99,6 +125,15 @@ def get_pipeline(lang_code: str = "a"):
     except Exception as e:
         raise KokoroError(f"failed to initialise Kokoro pipeline: {e}") from e
     _worker_local.pipeline = pipe
+    if not _pipeline_ready.is_set():
+        with _cb_lock:
+            _pipeline_ready.set()
+            cbs, _ready_cbs[:] = list(_ready_cbs), []
+        for cb in cbs:
+            try:
+                cb()
+            except Exception:
+                pass
     return pipe
 
 

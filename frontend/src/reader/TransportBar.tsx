@@ -75,9 +75,12 @@ function fmt(ms: number): string {
 export default function TransportBar({
   timeline,
   onToggleBookmarks,
+  modelLoading = false,
 }: {
   timeline: Timeline
   onToggleBookmarks: () => void
+  /** first-run Kokoro model fetch — shown until the 'model ready' SSE event */
+  modelLoading?: boolean
 }) {
   const globalMs = usePlayerStore((s) => s.globalMs)
   const playing = usePlayerStore((s) => s.playing)
@@ -151,6 +154,18 @@ export default function TransportBar({
           >
             ⚠ failed · retry
           </button>
+        )}
+        {modelLoading && (
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 font-semibold"
+            style={{
+              color: 'var(--accent)',
+              background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+            }}
+            title="The narration model downloads once (~330 MB); reading works meanwhile — playback starts when it finishes"
+          >
+            ● voice model — one-time download
+          </span>
         )}
         <span className="tabular-nums shrink-0">{fmt(readyPos)}</span>
         <span aria-hidden>·</span>

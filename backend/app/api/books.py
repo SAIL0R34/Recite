@@ -77,6 +77,24 @@ def add_book(body: AddBook):
     return {"book": book, "already_present": False}
 
 
+@router.post("/sample")
+def add_sample():
+    """Copy the bundled public-domain sample into DATA_DIR and ingest it.
+
+    Idempotent: the stable destination path means a second call returns the
+    existing book with already_present=True (same shape as POST /api/books).
+    Sample: Alice's Adventures in Wonderland (Lewis Carroll, 1865 — public
+    domain), https://www.gutenberg.org/ebooks/11
+    """
+    if not config.SAMPLE_EPUB.is_file():
+        raise HTTPException(500, "sample book missing from installation")
+    dest = config.DATA_DIR / "sample-library" / "sample.epub"
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(config.SAMPLE_EPUB, dest)
+    return add_book(AddBook(path=str(dest)))
+
+
 @router.delete("/{book_id}")
 def delete_book(book_id: str):
     if not db.get_book(book_id):

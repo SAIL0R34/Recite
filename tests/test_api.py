@@ -88,6 +88,26 @@ def test_cover_404_when_absent(client, book_id):
     assert client.get("/api/books/zzz/cover").status_code == 404
 
 
+def test_add_sample(client, monkeypatch):
+    from app.api import books as books_api
+
+    calls = []
+
+    def fake_ingest(path):
+        calls.append(path)
+        return db.add_book("sample1", path, "Sample", "Anon", "epub", [], 42)
+
+    monkeypatch.setattr(books_api, "ingest_file", fake_ingest)
+    r = client.post("/api/books/sample")
+    assert r.status_code == 200
+    assert r.json()["already_present"] is False
+    assert calls and calls[0].endswith("sample-library/sample.epub")
+    # idempotent: the stable destination path dedupes to the same book
+    r2 = client.post("/api/books/sample")
+    assert r2.json()["already_present"] is True
+    assert r2.json()["book"]["id"] == "sample1"
+
+
 def test_status_404_without_manifest(client, book_id):
     assert client.get(f"/api/books/{book_id}/status").status_code == 404
 

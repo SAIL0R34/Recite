@@ -32,6 +32,7 @@ export default function ReaderView() {
   const [error, setError] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
+  const [modelLoading, setModelLoading] = useState(false)
 
   const store = usePlayerStore()
   const timeline = store.timeline
@@ -163,6 +164,7 @@ export default function ReaderView() {
         }
       },
       onGeneration: () => void reload(),
+      onModel: (e) => setModelLoading(e.state === 'downloading'),
     })
     let timer: ReturnType<typeof setInterval> | null = null
     if (!sseSupported()) {
@@ -424,6 +426,7 @@ export default function ReaderView() {
           <TransportBar
             timeline={timeline}
             onToggleBookmarks={() => setDrawerOpen((v) => !v)}
+            modelLoading={modelLoading}
           />
         </div>
       )}

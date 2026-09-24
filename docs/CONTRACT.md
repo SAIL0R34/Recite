@@ -8,8 +8,10 @@ books/<book_id>/
   source.json                  # ingest metadata + content hash
   document.json                # sections → paragraphs → sentences → words
   manifest.json                # generation state + word timings (v2, section-audio)
+  cover.jpg|png                # ingest-time thumbnail (best effort, may be absent)
   audio/section-000.mp3        # one MP3 per section, concat of chunk WAVs
   _work/                       # transient per-chunk WAVs, deleted on section success
+sample-library/sample.epub     # copy of the bundled sample book (POST /sample)
 ```
 
 `~/Documents/BOOKS` is read-only input — never written.
@@ -45,16 +47,18 @@ books/<book_id>/
 
 | Route | Verb | Notes |
 |---|---|---|
-| `/api/books` | GET/POST | POST `{path}`; 422 = refusal with message |
+| `/api/books` | GET/POST | POST `{path}`; 422 = refusal with message. GET rows include `percent` and `last_read` (progress.updated_at, null when never opened) |
+| `/api/books/sample` | POST | copy the bundled public-domain sample into DATA_DIR + ingest; idempotent (stable path → `already_present`) |
 | `/api/books/library` | GET | browse list under BOOKS_DIR |
 | `/api/books/{id}` | DELETE | |
 | `/api/books/{id}/document` `/manifest` `/status` | GET | |
+| `/api/books/{id}/cover` | GET | ingest-time thumbnail (jpg/png); 404 when absent |
 | `/api/books/{id}/audio/section-NNN.mp3` | GET | FileResponse → Range/206 free |
 | `/api/books/{id}/progress` | GET/PUT | `POST …/progress/beacon` for sendBeacon |
-| `/api/books/{id}/bookmarks` | GET/POST, `DELETE …/{bid}` | |
+| `/api/books/{id}/bookmarks` | GET/POST, `PATCH/DELETE …/{bid}` | PATCH `{name}` renames in place (keeps created_at order) |
 | `/api/settings` | GET/PUT | voice, theme, fontSize, lineHeight, fontFamily, highlightStyle, alignment |
-| `/api/books/{id}/events` | GET SSE | `section {idx,status}`, `generation {done}` |
-| `/api/books/{id}/generate` | POST | `?boost=N&window=CHUNKS`: queue the audio window around section N — lane 1 = N+successor, lane 2 = forward until chunk budget; out-of-window queued work goes cold for `RECITE_TTS_GRACE` s, then releases (stays `pending`, nothing lost) |
+| `/api/books/{id}/events` | GET SSE | `section {idx,status}`, `chunk {idx,chunk}`, `generation {done}`, `model {state:downloading|ready}` (once per cold cache) |
+| `/api/books/{id}/generate` | POST | `?boost=N&window=CHUNKS`: queue the audio window around section N — lane 1 = N+successor, lane 2 = forward until chunk budget; out-of-window queued work goes cold for `RECITE_TTS_GRACE` s, then releases (stays `pending`, nothing lost). `boost` also force-requeues a `failed` section |
 
 ## Player invariants
 
