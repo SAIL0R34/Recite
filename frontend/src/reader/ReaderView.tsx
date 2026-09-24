@@ -69,8 +69,8 @@ export default function ReaderView() {
         if (dead) return
         if (p) usePlayerStore.getState().resumeFrom(p)
         // Nothing spoken yet and the queue idle → start TTS now. Bias: the
-        // section in view, unless it's huge (a book's 700-chunk front matter
-        // is ~25 min of synthesis) — then the smallest pending section so
+        // section in view, unless it's huge (a 700-chunk front matter is
+        // ~25 min of synthesis) — then the smallest pending section so
         // something becomes audible soon.
         const inflight = ["ready", "synthesizing", "aligning", "encoding"]
         const pending = m.sections.filter((s) => s.status === "pending")
