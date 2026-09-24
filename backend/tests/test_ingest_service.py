@@ -127,3 +127,33 @@ def test_source_file_never_written():
         ingest_file(path)
         assert content_hash(path) == digest
         assert os.listdir(tmp.name) == ["book.epub"]
+
+
+def test_ingest_writes_pdf_cover():
+    with fix.temp_data() as env:
+        tmp = tempfile.TemporaryDirectory(prefix="recite-ing-")
+        path = fix.write_two_column_pdf(os.path.join(tmp.name, "two_col.pdf"))
+        book = ingest_file(path)
+        cover = env.root / "books" / book["id"] / "cover.jpg"
+        assert cover.is_file()
+        payload = cover.read_bytes()
+        assert payload[:3] == b"\xff\xd8\xff"      # jpeg magic
+
+
+def test_ingest_writes_epub_cover():
+    with fix.temp_data() as env:
+        tmp = tempfile.TemporaryDirectory(prefix="recite-ing-")
+        path = fix.write_epub(os.path.join(tmp.name, "book.epub"))
+        book = ingest_file(path)
+        cover = env.root / "books" / book["id"] / "cover.png"
+        assert cover.is_file()
+        assert cover.read_bytes()[:4] == b"\x89PNG"  # png magic
+
+
+def test_ingest_coverless_epub_writes_no_cover():
+    with fix.temp_data() as env:
+        tmp = tempfile.TemporaryDirectory(prefix="recite-ing-")
+        path = fix.write_small_docs_epub(os.path.join(tmp.name, "harbor.epub"))
+        book = ingest_file(path)
+        bdir = env.root / "books" / book["id"]
+        assert not any(bdir.glob("cover.*"))

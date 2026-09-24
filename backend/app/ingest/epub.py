@@ -160,6 +160,56 @@ def _sections(blocks: List[_Block]) -> List[Section]:
     return out or [Section(idx=0, title=None)]
 
 
+def cover_bytes(path: str) -> Optional[Tuple[bytes, str]]:
+    """Cover image from OPF metadata as (bytes, 'jpg'|'png') — or None.
+
+    Resolution order: <meta name="cover">, item properties="cover-image",
+    then the first image/* manifest item. Only jpeg/png magic is accepted;
+    never raises.
+    """
+    try:
+        with zipfile.ZipFile(path) as zf:
+            opf_path = _container_opf(zf)
+            base = posixpath.dirname(opf_path)
+            with zf.open(opf_path) as fh:
+                root = ET.fromstring(fh.read())
+            meta_cover: Optional[str] = None
+            prop_cover: Optional[str] = None
+            first_image: Optional[str] = None
+            hrefs: dict = {}
+            for node in root.iter():
+                tag, attrs = _local(node.tag), node.attrib
+                if tag == "meta" and attrs.get("name") == "cover":
+                    meta_cover = attrs.get("content")
+                elif tag == "item":
+                    href, id_ = attrs.get("href"), attrs.get("id")
+                    media = attrs.get("media-type") or ""
+                    if href and id_:
+                        hrefs[id_] = unquote_href(href)
+                        if "cover-image" in (attrs.get("properties") or ""):
+                            prop_cover = id_
+                        if media.startswith("image/") and first_image is None:
+                            first_image = id_
+            for id_ in (meta_cover, prop_cover, first_image):
+                href = id_ and hrefs.get(id_)
+                if not href:
+                    continue
+                full = (posixpath.normpath(posixpath.join(base, href))
+                        if base and base not in (".", "") else href)
+                try:
+                    payload = zf.read(full)
+                except KeyError:
+                    continue
+                if payload[:3] == b"\xff\xd8\xff":
+                    return payload, "jpg"
+                if payload[:4] == b"\x89PNG":
+                    return payload, "png"
+                return None            # gif/svg/webp: no thumbnail
+            return None
+    except Exception:
+        return None
+
+
 def extract(path: str) -> Extraction:
     """Extract an EPUB into an `Extraction` (sections, warnings, metadata)."""
     from .service import IngestError

@@ -138,6 +138,22 @@ def _presplit(sections: List["object"],
     return out, []
 
 
+def _write_cover(book_id: str, src: str, fmt: str) -> None:
+    """Best-effort cover.jpg/png in the book dir; never fails the ingest."""
+    try:
+        found = (pdf_module.cover_bytes(src) if fmt == "pdf"
+                 else epub_module.cover_bytes(src))
+    except Exception:
+        found = None
+    if not found:
+        return
+    payload, ext = found
+    config.book_dir(book_id).mkdir(parents=True, exist_ok=True)
+    config.book_file(book_id, f"cover.{ext}").write_bytes(payload)
+    other = "png" if ext == "jpg" else "jpg"     # stale sibling from a reingest
+    config.book_file(book_id, f"cover.{other}").unlink(missing_ok=True)
+
+
 def ingest_file(path: str) -> dict:
     """Ingest one book file; returns the new/updated db row.
 
@@ -197,6 +213,7 @@ def ingest_file(path: str) -> dict:
     _write_json(config.book_file(book_id, "document.json"), document.to_dict())
     manifestio.init_manifest(book_id, sections=chunk_sections, engine=ENGINE,
                              voice=_voice_setting())
+    _write_cover(book_id, str(src), fmt)
     book = _db_module.db.add_book(book_id, str(src), title, extraction.author,
                                   fmt, warnings, total_words)
     return _db_module.db.get_book(book_id) or book

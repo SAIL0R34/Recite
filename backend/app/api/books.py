@@ -103,6 +103,19 @@ def get_document(book_id: str):
                         headers={"Cache-Control": "private, must-revalidate"})
 
 
+@router.get("/{book_id}/cover")
+def get_cover(book_id: str):
+    """Thumbnail written at ingest; 404 when the book has none (the library
+    falls back to a typographic card)."""
+    _require(book_id)
+    for name, media in (("cover.jpg", "image/jpeg"), ("cover.png", "image/png")):
+        p = config.book_file(book_id, name)
+        if p.is_file():
+            return FileResponse(p, media_type=media,
+                                headers={"Cache-Control": "private, max-age=86400"})
+    raise HTTPException(404, "no cover")
+
+
 @router.get("/{book_id}/manifest")
 def get_manifest(book_id: str, timings: str = ""):
     """`?timings=none` strips per-word timings (chunks keep their offsets).

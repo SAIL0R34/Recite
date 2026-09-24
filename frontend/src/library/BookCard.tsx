@@ -2,7 +2,31 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { BookSummary } from '../types'
 import { useLibraryStore } from '../stores/libraryStore'
-import { rechunkBook } from '../api/client'
+import { coverUrl, rechunkBook } from '../api/client'
+
+/** Cover thumbnail written at ingest; typographic card when absent (404). */
+export function BookCover({ book }: { book: BookSummary }) {
+  const [ok, setOk] = useState(true)
+  return ok ? (
+    <img
+      src={coverUrl(book.id)}
+      alt=""
+      loading="lazy"
+      onError={() => setOk(false)}
+      className="aspect-[2/3] w-full rounded-md object-cover"
+    />
+  ) : (
+    <div
+      className="flex aspect-[2/3] w-full flex-col items-center justify-center gap-1 overflow-hidden rounded-md p-3 text-center"
+      style={{ background: 'var(--surface-2)' }}
+    >
+      <span className="line-clamp-3 font-semibold leading-tight">{book.title}</span>
+      <span className="line-clamp-1 text-xs" style={{ color: 'var(--muted)' }}>
+        {book.author || ''}
+      </span>
+    </div>
+  )
+}
 
 function Ring({ percent }: { percent: number }) {
   const r = 20
@@ -60,6 +84,7 @@ export default function BookCard({ book }: { book: BookSummary }) {
         e.key === 'Enter' && navigate(`/book/${encodeURIComponent(book.id)}`)
       }
     >
+      <BookCover book={book} />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-medium leading-snug">{book.title}</h3>

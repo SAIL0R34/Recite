@@ -595,6 +595,27 @@ def _build_sections(paras: Sequence[_Para], doc) -> Tuple[List[Section], List[st
 
 # ------------------------------------------------------------------ public
 
+def cover_bytes(path: str, max_width: int = 480) -> Optional[Tuple[bytes, str]]:
+    """Page-0 thumbnail as (jpeg_bytes, 'jpg') — or None; never raises."""
+    try:
+        doc = pymupdf.open(path)
+    except Exception:
+        return None
+    with doc:
+        try:
+            if not doc.page_count:
+                return None
+            page = doc.load_page(0)
+            zoom = max_width / max(1.0, page.rect.width)
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+            try:
+                return pix.tobytes("jpeg"), "jpg"
+            except Exception:
+                return pix.tobytes("png"), "png"   # older pymupdf: PNG only
+        except Exception:
+            return None
+
+
 def extract(path: str) -> Extraction:
     """Extract a PDF into an `Extraction` (sections, warnings, metadata)."""
     try:

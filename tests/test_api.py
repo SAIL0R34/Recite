@@ -79,6 +79,11 @@ def test_audio_404_before_generation(client, book_id):
     assert client.get(f"/api/books/{book_id}/audio/%2e%2e%2frecite.db").status_code in (400, 404)
 
 
+def test_cover_404_when_absent(client, book_id):
+    assert client.get(f"/api/books/{book_id}/cover").status_code == 404
+    assert client.get("/api/books/zzz/cover").status_code == 404
+
+
 def test_status_404_without_manifest(client, book_id):
     assert client.get(f"/api/books/{book_id}/status").status_code == 404
 

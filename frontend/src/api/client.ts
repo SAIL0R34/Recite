@@ -109,6 +109,10 @@ export const getStatus = (id: string): Promise<StatusCounts> =>
 export const audioBase = (id: string): string =>
   `/api/books/${encodeURIComponent(id)}/audio/`
 
+/** Ingest-time thumbnail; 404 when the book has none (caller falls back). */
+export const coverUrl = (id: string): string =>
+  `/api/books/${encodeURIComponent(id)}/cover`
+
 // ---- progress ----
 
 export const getProgress = (id: string): Promise<Progress | null> =>

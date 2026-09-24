@@ -271,8 +271,11 @@ EPUB_OPF = """<?xml version="1.0" encoding="utf-8"?>
     <dc:title>The Quill And The Lantern</dc:title>
     <dc:creator>J. Ashgrove</dc:creator>
     <dc:language>en</dc:language>
+    <meta name="cover" content="cover-image"/>
   </metadata>
   <manifest>
+    <item id="cover-image" href="Images/cover.png" media-type="image/png"
+           properties="cover-image"/>
     <item id="toc" href="Text/toc.xhtml" media-type="application/xhtml+xml"/>
     <item id="ch1" href="Text/ch1.xhtml" media-type="application/xhtml+xml"/>
     <item id="ch2" href="Text/ch2.xhtml" media-type="application/xhtml+xml"/>
@@ -280,6 +283,13 @@ EPUB_OPF = """<?xml version="1.0" encoding="utf-8"?>
   <spine><itemref idref="toc"/><itemref idref="ch1"/><itemref idref="ch2"/></spine>
 </package>
 """
+
+# 1x1 transparent PNG — a deterministic cover image for the fixture EPUB.
+TINY_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d4944415478da63f8ffff3f0005fe02fea735c9a4"
+    "0000000049454e44ae426082"
+)
 
 EPUB_TOC = """<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
@@ -335,6 +345,7 @@ def _zip_epub(path: str, docs: List[str]) -> str:
         z.writestr(info, "application/epub+zip")
         z.writestr("META-INF/container.xml", EPUB_CONTAINER)
         z.writestr("OEBPS/content.opf", EPUB_OPF)
+        z.writestr("OEBPS/Images/cover.png", TINY_PNG)
         for name in docs:
             z.writestr(
                 f"OEBPS/Text/{name}.xhtml",
