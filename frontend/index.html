@@ -1,10 +1,27 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="sepia">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Recite</title>
+    <script>
+      // Pre-paint: apply the last-cached theme before React boots (see
+      // settingsStore.ts applyTheme). Keeps sepia/dark from flashing light.
+      try {
+        var s = JSON.parse(localStorage.getItem('recite:settings') || 'null')
+        if (s && s.theme) {
+          document.documentElement.dataset.theme = s.theme
+          document.documentElement.classList.toggle('dark', s.theme === 'dark')
+        }
+        if (s && s.fontSize)
+          document.documentElement.style.setProperty('--reader-font-size', s.fontSize + 'px')
+        if (s && s.lineHeight)
+          document.documentElement.style.setProperty('--reader-line-height', String(s.lineHeight))
+        if (s && s.fontFamily)
+          document.documentElement.style.setProperty('--reader-font', s.fontFamily)
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

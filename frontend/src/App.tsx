@@ -5,7 +5,7 @@ import { useLibraryStore } from './stores/libraryStore'
 import { useSettingsStore } from './stores/settingsStore'
 import AppearancePanel from './reader/AppearancePanel'
 import ToastHost from './library/ToastHost'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 function NotFound() {
   return (
@@ -20,8 +20,10 @@ function NotFound() {
 
 export default function App() {
   const [appearanceOpen, setAppearanceOpen] = useState(false)
-  // keep settings warm for the header button
-  void useSettingsStore.getState().load()
+  // main.tsx loads settings pre-render; if the backend was down then, retry once
+  useEffect(() => {
+    if (!useSettingsStore.getState().loaded) void useSettingsStore.getState().load()
+  }, [])
 
   return (
     <BrowserRouter>
