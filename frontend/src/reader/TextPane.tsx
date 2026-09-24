@@ -11,6 +11,7 @@ import type {
 import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useHighlightStore } from '../stores/highlightStore'
+import { requestGeneration } from '../api/client'
 import type { Timeline } from '../player/timeline'
 
 const MARK_COLORS = ['amber', 'green', 'sky', 'rose'] as const
@@ -341,19 +342,34 @@ function SectionView({
   }, [manSection, more, limit])
 
   const generating = manSection.status !== 'ready'
+  const failed = manSection.status === 'failed'
+  const bookId = usePlayerStore((s) => s.bookId)
 
   return (
     <section className="mb-10" data-section={docSection.idx}>
       {(docSection.title || manSection.title) && (
         <h2 className="mb-4 font-semibold" style={{ fontSize: '1.3em' }}>
           {docSection.title || manSection.title}
-          {generating && (
-            <span
-              className="kar-chip ml-2 align-middle text-xs"
-              title="audio generating — text is readable, synced highlighting starts when the section is done"
+          {failed ? (
+            <button
+              className="kar-chip kar-chip-static ml-2 align-middle text-xs"
+              style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+              title="Narration for this section failed — click to retry"
+              onClick={() => {
+                if (bookId) void requestGeneration(bookId, manSection.idx)
+              }}
             >
-              generating…
-            </span>
+              failed · retry
+            </button>
+          ) : (
+            generating && (
+              <span
+                className="kar-chip ml-2 align-middle text-xs"
+                title="audio generating — text is readable, synced highlighting starts when the section is done"
+              >
+                generating…
+              </span>
+            )
           )}
         </h2>
       )}

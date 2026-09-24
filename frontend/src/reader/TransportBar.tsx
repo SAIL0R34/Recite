@@ -1,3 +1,4 @@
+import { requestGeneration } from '../api/client'
 import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import SpeedPopover from './SpeedPopover'
@@ -82,11 +83,13 @@ export default function TransportBar({
   const playing = usePlayerStore((s) => s.playing)
   const rate = usePlayerStore((s) => s.rate)
   const sectionIdx = usePlayerStore((s) => s.sectionIdx)
+  const bookId = usePlayerStore((s) => s.bookId)
   const cycleTheme = useSettingsStore((s) => s.cycleTheme)
 
   const readyPos = globalToReady(timeline, globalMs)
   const cur = timeline.byIndex[sectionIdx]
   const streaming = !!cur && cur.status !== 'ready' && cur.partialMs > 0
+  const failed = !!cur && cur.status === 'failed'
   const notReady = cur && cur.status !== 'ready' && cur.partialMs <= 0
   const remaining = Math.max(0, timeline.readyMs - readyPos)
   const playedPct = timeline.readyMs
@@ -133,6 +136,21 @@ export default function TransportBar({
           >
             ● streaming
           </span>
+        )}
+        {failed && (
+          <button
+            className="shrink-0 rounded-full px-2 py-0.5 font-semibold"
+            style={{
+              color: 'var(--danger)',
+              background: 'color-mix(in srgb, var(--danger) 14%, transparent)',
+            }}
+            title="Narration for this section failed — click to retry"
+            onClick={() => {
+              if (bookId && cur) void requestGeneration(bookId, cur.section)
+            }}
+          >
+            ⚠ failed · retry
+          </button>
         )}
         <span className="tabular-nums shrink-0">{fmt(readyPos)}</span>
         <span aria-hidden>·</span>
