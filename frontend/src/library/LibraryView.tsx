@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useLibraryStore } from '../stores/libraryStore'
-import BookCard from './BookCard'
+import BookCard, { BookCover } from './BookCard'
 import AddBookDialog from './AddBookDialog'
 
 export default function LibraryView() {
@@ -13,6 +14,14 @@ export default function LibraryView() {
   useEffect(() => {
     void useLibraryStore.getState().refresh()
   }, [])
+
+  const hero = useMemo(
+    () =>
+      books
+        .filter((b) => (b.percent ?? 0) > 0 && b.last_read)
+        .sort((a, b) => (b.last_read! - a.last_read!))[0],
+    [books],
+  )
 
   return (
     <div className="recite-scroll h-full overflow-y-auto">
@@ -36,6 +45,28 @@ export default function LibraryView() {
         >
           Backend unreachable: {error}
         </div>
+      )}
+
+      {hero && (
+        <Link
+          to={`/book/${encodeURIComponent(hero.id)}`}
+          className="card mb-6 flex items-center gap-5 p-4 transition-shadow hover:shadow-lg"
+          title="Resume where you left off"
+        >
+          <div className="w-20 shrink-0">
+            <BookCover book={hero} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>
+              Continue reading
+            </p>
+            <h2 className="truncate text-lg font-semibold leading-snug">{hero.title}</h2>
+            <p className="truncate text-sm" style={{ color: 'var(--muted)' }}>
+              {hero.author || 'Unknown'} · {Math.round(hero.percent)}% read
+            </p>
+          </div>
+          <span className="btn btn-accent shrink-0">Continue →</span>
+        </Link>
       )}
 
       {loading && books.length === 0 ? (

@@ -12,6 +12,8 @@ export interface BookSummary {
   path: string
   created_at: string
   updated_at: string
+  /** epoch seconds of the last reading session; null when never opened */
+  last_read?: number | null
 }
 
 export interface LibraryEntry {

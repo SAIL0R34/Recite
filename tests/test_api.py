@@ -36,6 +36,10 @@ def test_progress_roundtrip(client, book_id):
                 json={**body, "percent": 0.5})
     got = client.get(f"/api/books/{book_id}/progress").json()
     assert got["percent"] == pytest.approx(0.5)
+    # the book list exposes the last-read timestamp for the continue hero
+    row = next(b for b in client.get("/api/books").json()
+               if b["id"] == book_id)
+    assert row["last_read"] and row["last_read"] > 0
 
 
 def test_progress_missing_book_404(client):

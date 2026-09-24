@@ -117,8 +117,10 @@ class Database:
     def list_books(self) -> list:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT b.*, COALESCE(p.percent,0) AS percent FROM books b"
-                " LEFT JOIN progress p ON p.book_id=b.id ORDER BY b.updated_at DESC").fetchall()
+                "SELECT b.*, COALESCE(p.percent,0) AS percent,"
+                " p.updated_at AS last_read"
+                " FROM books b LEFT JOIN progress p ON p.book_id=b.id"
+                " ORDER BY b.updated_at DESC").fetchall()
         return [dict(r) for r in rows]
 
     def find_book_by_path(self, path: str) -> Optional[dict]:
