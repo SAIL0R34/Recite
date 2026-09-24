@@ -47,7 +47,19 @@ def test_bookmarks_crud(client, book_id):
                     json={"name": "start", "section_idx": 1, "ms": 250.5})
     assert r.status_code == 200
     bid = r.json()["id"]
+    created_at = r.json()["created_at"]
     assert [b["name"] for b in client.get(f"/api/books/{book_id}/bookmarks").json()] == ["start"]
+    # rename via PATCH keeps id and created_at (no delete+recreate)
+    r = client.patch(f"/api/books/{book_id}/bookmarks/{bid}",
+                     json={"name": "renamed"})
+    assert r.status_code == 200
+    assert r.json()["id"] == bid and r.json()["created_at"] == created_at
+    rows = client.get(f"/api/books/{book_id}/bookmarks").json()
+    assert [b["name"] for b in rows] == ["renamed"]
+    assert client.patch(f"/api/books/{book_id}/bookmarks/zzz",
+                        json={"name": "x"}).status_code == 404
+    assert client.patch("/api/books/zzz/bookmarks/zzz",
+                        json={"name": "x"}).status_code == 404
     assert client.delete(f"/api/books/{book_id}/bookmarks/{bid}").status_code == 200
     assert client.get(f"/api/books/{book_id}/bookmarks").json() == []
 

@@ -192,6 +192,17 @@ class Database:
             self._conn.execute("DELETE FROM bookmarks WHERE id=?", (bookmark_id,))
             self._conn.commit()
 
+    def rename_bookmark(self, bookmark_id: str, name: str):
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE bookmarks SET name=? WHERE id=?", (name, bookmark_id))
+            self._conn.commit()
+            if cur.rowcount == 0:
+                return None
+            row = self._conn.execute(
+                "SELECT * FROM bookmarks WHERE id=?", (bookmark_id,)).fetchone()
+        return dict(row) if row else None
+
     # ------------------------------------------------------ highlights
     def list_highlights(self, book_id: str) -> list:
         with self._lock:

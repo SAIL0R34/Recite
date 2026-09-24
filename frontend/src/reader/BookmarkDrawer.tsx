@@ -4,6 +4,7 @@ import {
   createBookmark,
   deleteBookmark,
   listBookmarks,
+  renameBookmark,
 } from '../api/client'
 import { usePlayerStore } from '../stores/playerStore'
 
@@ -28,16 +29,15 @@ export default function BookmarkDrawer({
       .then(setItems)
       .catch(() => setItems([]))
 
-  // No PATCH route — rename = replace (delete + recreate keeps ms/section).
+  // Rename in place — PATCH keeps the pin's created_at ordering.
   const commitRename = async (b: Bookmark, name: string) => {
     if (name === b.name) return
-    await deleteBookmark(bookId, b.id).catch(() => {})
-    await createBookmark(bookId, {
-      name,
-      section_idx: b.section_idx,
-      ms: b.ms,
-    }).catch(() => {})
-    await refresh()
+    try {
+      const updated = await renameBookmark(bookId, b.id, name)
+      setItems((xs) => xs.map((x) => (x.id === updated.id ? updated : x)))
+    } catch {
+      await refresh()
+    }
   }
 
   useEffect(() => {

@@ -168,6 +168,16 @@ export const deleteBookmark = (id: string, bid: string) =>
     { method: 'DELETE' },
   )
 
+export const renameBookmark = (
+  id: string,
+  bid: string,
+  name: string,
+): Promise<Bookmark> =>
+  request(
+    `/api/books/${encodeURIComponent(id)}/bookmarks/${encodeURIComponent(bid)}`,
+    { method: 'PATCH', body: j({ name }) },
+  )
+
 // ---- settings ----
 
 export const getSettings = (): Promise<Settings> => request('/api/settings')
