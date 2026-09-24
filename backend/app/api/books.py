@@ -67,6 +67,9 @@ def add_book(body: AddBook):
         raise HTTPException(400, f"file not found: {path}")
     if path.suffix.lower() not in (".pdf", ".epub"):
         raise HTTPException(415, "only .pdf and .epub are supported")
+    # ingest stores the resolved path (symlinks like /tmp → /private/tmp
+    # would otherwise make the dedupe lookup miss)
+    path = path.resolve()
     existing = db.find_book_by_path(str(path))
     if existing:
         return {"book": existing, "already_present": True}
