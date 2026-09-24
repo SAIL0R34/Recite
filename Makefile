@@ -4,6 +4,7 @@ NPM := npm
 .PHONY: dev build run install test
 
 install:
+	python3 -m venv .venv
 	.venv/bin/pip install -r backend/requirements.txt
 	cd frontend && npm install
 

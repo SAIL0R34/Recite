@@ -6,10 +6,12 @@ cd "$(dirname "$0")/.."
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export PYTHONPATH=backend
 PORT="${RECITE_PORT:-8744}"
-cleanup() { kill 0 }
+cleanup() {
+  kill 0
+}
 trap cleanup EXIT
 
-(cd backend && .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning) &
+(.venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port "$PORT" --log-level warning) &
 API=$!
 
 (cd frontend && [ -d node_modules ] || npm install --silent) || true

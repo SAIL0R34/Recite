@@ -9,3 +9,10 @@ dist/
 tmp/
 .cockpit/
 .venv/
+.env*
+*.db
+*.sqlite*
+*.log
+*.bundle
+*.tar.gz
+.claude/

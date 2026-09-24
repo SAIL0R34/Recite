@@ -47,7 +47,7 @@ export default function AddBookDialog() {
         <div className="mb-2 flex gap-2">
           <input
             className="input"
-            placeholder="/Users/…/Documents/BOOKS/….pdf"
+            placeholder="~/Documents/BOOKS/Title.epub"
             value={path}
             onChange={(e) => setPath(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && path.trim()) void add(path.trim()) }}

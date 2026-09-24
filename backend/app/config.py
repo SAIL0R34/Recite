@@ -46,7 +46,7 @@ TTS_GRACE_S = float(os.environ.get("RECITE_TTS_GRACE", "480"))
 TTS_RETRIES = int(os.environ.get("RECITE_TTS_RETRIES", "2"))
 
 # Frontend build dir (repo/../frontend/dist relative to this file's repo root)
-REPO_ROOT = Path(__file__).resolve().parents2 if False else Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 
 DEFAULT_SETTINGS = {
