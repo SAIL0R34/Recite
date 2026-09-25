@@ -118,6 +118,29 @@ export default function AppearancePanel() {
           Pages fill the screen and turn; narration flips them for you.
         </p>
       </div>
+      <div>
+        <p className="mb-1 font-medium">Animations</p>
+        <div className="flex gap-1">
+          {(
+            [
+              [true, 'On'],
+              [false, 'Off'],
+            ] as [boolean, string][]
+          ).map(([id, label]) => (
+            <button
+              key={label}
+              className={`btn btn-sm ${s.pageAnimations === id ? 'btn-accent' : ''}`}
+              onClick={() => update({ pageAnimations: id })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+          Page-turn slide, smooth jumps, gentle open. Off unless you opt in;
+          Reduce Motion always wins.
+        </p>
+      </div>
     </div>
   )
 }

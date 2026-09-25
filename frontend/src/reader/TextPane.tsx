@@ -27,6 +27,11 @@ type PageAnchor =
   | { kind: 'word'; sec: number; para: number; ti: number }
   | { kind: 'section'; sec: number }
 
+/** Motion is opt-in and reduced-motion always wins. */
+const animOK = () =>
+  useSettingsStore.getState().settings?.pageAnimations === true &&
+  !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 // Light the active word this many ms *before* its aligned onset. Forced-
 // timestamps mark the exact spoken start, which is already a beat late for
 // the eye — a small lead makes the highlight feel synchronous (or slightly
@@ -76,6 +81,9 @@ export default function TextPane({
     (s) => s.settings?.highlightStyle ?? 'highlighter',
   )
   const paged = useSettingsStore((s) => s.settings?.readingMode === 'paged')
+  const pageAnimations = useSettingsStore(
+    (s) => s.settings?.pageAnimations === true,
+  )
   const hlList = useHighlightStore((s) => s.list)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const wordsRef = useRef<WordRef[]>([])
@@ -326,7 +334,7 @@ export default function TextPane({
       const el = containerRef.current?.querySelector(`[data-section="${jump.idx}"]`)
       if (!el) return
       if (pagedRef.current) setPage(pageOfEl(el as HTMLElement))
-      else el.scrollIntoView({ block: 'start' })
+      else el.scrollIntoView({ block: 'start', behavior: animOK() ? 'smooth' : 'auto' })
     }, 60)
     return () => clearTimeout(t)
   }, [jump])
@@ -342,7 +350,7 @@ export default function TextPane({
       const p = (el?.closest('p') as HTMLElement | null) ?? el
       if (!p) return
       if (pagedRef.current) setPage(pageOfEl(p))
-      else p.scrollIntoView({ block: d.block })
+      else p.scrollIntoView({ block: d.block, behavior: animOK() ? 'smooth' : 'auto' })
     }
     window.addEventListener('recite:page', onPage)
     window.addEventListener('recite:reveal', onReveal)
@@ -483,7 +491,7 @@ export default function TextPane({
         {paged ? (
           <div
             ref={trackRef}
-            className="page-track mx-auto"
+            className={`page-track mx-auto${pageAnimations ? ' page-anim' : ''}`}
             style={{
               width: pageW || undefined,
               transform: `translateX(${-(page * (pageW + PAGE_GAP))}px)`,
@@ -505,7 +513,10 @@ export default function TextPane({
           </div>
         ) : (
           <div
-            className="mx-auto max-w-[42rem] font-[family-name:var(--reader-font,Georgia,'Times_New_Roman',serif)]"
+            key={doc.id}
+            className={`mx-auto max-w-[42rem] font-[family-name:var(--reader-font,Georgia,'Times_New_Roman',serif)]${
+              pageAnimations ? ' pane-enter' : ''
+            }`}
             style={{
               fontSize: 'var(--reader-font-size, 19px)',
               lineHeight: 'var(--reader-line-height, 1.7)',

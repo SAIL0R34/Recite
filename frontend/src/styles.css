@@ -139,15 +139,6 @@ body {
   }
 }
 
-@keyframes recite-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
 /* ---- paged reading (multi-column strip) -------------------------------- */
 
 .recite-page {
@@ -163,6 +154,36 @@ body {
 .page-cols {
   height: 100%;
   column-fill: auto;
+}
+
+/* opt-in page-turn: the turn IS animating the track translate */
+.page-track.page-anim {
+  transition: transform 360ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* opt-in book-open softness in scroll mode */
+.pane-enter {
+  animation: pane-in 320ms ease-out both;
+}
+
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-track.page-anim {
+    transition: none;
+  }
+  .pane-enter {
+    animation: none;
+  }
 }
 
 .page-hotspot {
