@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
   BookDocument,
   DocParagraph,
@@ -13,8 +13,19 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useHighlightStore } from '../stores/highlightStore'
 import { requestGeneration } from '../api/client'
 import type { Timeline } from '../player/timeline'
+import { clampPage, pageCountFor, pageForX, sectionForPage } from './paged'
+import type { PageGeom, SectionPageBound } from './paged'
 
 const MARK_COLORS = ['amber', 'green', 'sky', 'rose'] as const
+
+// Paged mode: the section window is laid out as a horizontal multi-column
+// strip (one column = one page) and the visible page is a track translate.
+const PAGE_GAP = 48
+const PAGE_MARGIN = 24
+
+type PageAnchor =
+  | { kind: 'word'; sec: number; para: number; ti: number }
+  | { kind: 'section'; sec: number }
 
 // Light the active word this many ms *before* its aligned onset. Forced-
 // timestamps mark the exact spoken start, which is already a beat late for
@@ -60,14 +71,133 @@ export default function TextPane({
   const sectionIdx = usePlayerStore((s) => s.sectionIdx)
   const follow = usePlayerStore((s) => s.followMode)
   const manifestVersion = usePlayerStore((s) => s.manifestVersion)
+  const jump = usePlayerStore((s) => s.jump)
   const highlightStyle = useSettingsStore(
     (s) => s.settings?.highlightStyle ?? 'highlighter',
   )
+  const paged = useSettingsStore((s) => s.settings?.readingMode === 'paged')
   const hlList = useHighlightStore((s) => s.list)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const wordsRef = useRef<WordRef[]>([])
   const followRef = useRef(follow)
   followRef.current = follow
+
+  // ---- paged-mode state (all reads via refs so closures stay valid) ----
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  const colsRef = useRef<HTMLDivElement | null>(null)
+  const [page, setPage] = useState(0)
+  const [pageCount, setPageCount] = useState(1)
+  const [pageW, setPageW] = useState(0)
+  const pageRef = useRef(0)
+  pageRef.current = page
+  const pageCountRef = useRef(1)
+  pageCountRef.current = pageCount
+  const pageWRef = useRef(0)
+  pageWRef.current = pageW
+  const pagedRef = useRef(paged)
+  pagedRef.current = paged
+  const secBoundsRef = useRef<SectionPageBound[]>([])
+  const pendingAnchorRef = useRef<PageAnchor | null>(null)
+  const swipeRef = useRef<{ x: number; y: number } | null>(null)
+
+  const geom = (): PageGeom => ({ pageW: pageWRef.current, gap: PAGE_GAP })
+
+  /**
+   * Page of a DOM node via rect difference against the columns box. NOT
+   * offsetLeft: engines disagree on column-relative offsets for fragments.
+   * The track translate shifts both rects identically, so this is
+   * transform-invariant (safe mid-turn).
+   */
+  const pageOfEl = (el: HTMLElement): number => {
+    const cols = colsRef.current
+    if (!cols || pageWRef.current <= 0) return 0
+    const r = el.getBoundingClientRect()
+    const c = cols.getBoundingClientRect()
+    return pageForX(r.left - c.left, geom())
+  }
+
+  const remeasure = () => {
+    const cols = colsRef.current
+    if (!cols || pageWRef.current <= 0) return
+    // overflow:hidden boxes are still programmatically scrollable — a stray
+    // scroll would desync the transform, so pin it
+    if (containerRef.current) containerRef.current.scrollTop = 0
+    const c = cols.getBoundingClientRect()
+    const bounds: SectionPageBound[] = []
+    let strip = 0
+    for (const s of Array.from(cols.querySelectorAll<HTMLElement>('[data-section]'))) {
+      const r = s.getBoundingClientRect()
+      const left = r.left - c.left
+      if (left >= 0)
+        bounds.push({ sec: Number(s.dataset.section), page: pageForX(left, geom()) })
+      strip = Math.max(strip, r.right - c.left)
+    }
+    secBoundsRef.current = bounds
+    const count = pageCountFor(strip, geom())
+    setPageCount(count)
+    // a window slide renumbered the pages — land back on the anchor
+    const a = pendingAnchorRef.current
+    if (a) {
+      const sel =
+        a.kind === 'word'
+          ? `[data-sec="${a.sec}"][data-para="${a.para}"][data-ti="${a.ti}"]`
+          : `[data-section="${a.sec}"]`
+      const el = cols.querySelector(sel) as HTMLElement | null
+      if (el) {
+        pendingAnchorRef.current = null
+        setPage(clampPage(pageOfEl(el), count))
+        return
+      }
+    }
+    setPage((p) => clampPage(p, count))
+  }
+
+  const firstWordOnPage = (target: number): PageAnchor | null => {
+    const cols = colsRef.current
+    if (!cols) return null
+    const c = cols.getBoundingClientRect()
+    const step = pageWRef.current + PAGE_GAP
+    for (const w of Array.from(cols.querySelectorAll<HTMLElement>('[data-para]'))) {
+      const x = w.getBoundingClientRect().left - c.left
+      if (x >= target * step - step / 2 && x < (target + 1) * step - step / 2)
+        return {
+          kind: 'word',
+          sec: Number(w.dataset.sec),
+          para: Number(w.dataset.para),
+          ti: Number(w.dataset.ti),
+        }
+    }
+    return null
+  }
+
+  const goToPage = (target: number, manual: boolean) => {
+    const t = clampPage(target, pageCountRef.current)
+    if (manual && followRef.current) usePlayerStore.getState().setFollow(false)
+    const sec = sectionForPage(secBoundsRef.current, t)
+    if (sec !== usePlayerStore.getState().sectionIdx) {
+      // crossing into another section promotes it — the ±1 window slides and
+      // pages renumber; the anchor restores the position after remeasure
+      pendingAnchorRef.current = firstWordOnPage(t) ?? { kind: 'section', sec }
+      usePlayerStore.setState({ sectionIdx: sec })
+    }
+    setPage(t)
+  }
+
+  const flip = (delta: number) => {
+    const target = pageRef.current + delta
+    if (target < 0 || target > pageCountRef.current - 1) {
+      // strip edge: advance the section window (v1: lands on section start)
+      const st = usePlayerStore.getState()
+      const nextIdx = st.sectionIdx + delta
+      if (st.manifest?.sections.some((s) => s.idx === nextIdx)) {
+        pendingAnchorRef.current = { kind: 'section', sec: nextIdx }
+        if (followRef.current) usePlayerStore.getState().setFollow(false)
+        usePlayerStore.setState({ sectionIdx: nextIdx })
+      }
+      return
+    }
+    goToPage(target, true)
+  }
 
   // current ± 1 section, only where BOTH document and manifest agree
   const indices = useMemo(() => {
@@ -138,7 +268,15 @@ export default function TextPane({
           last.classList.remove('kar-active', 'kar-highlighter', 'kar-underline')
         if (el) {
           el.classList.add('kar-active', styleClass)
-          if (followRef.current) el.scrollIntoView({ block: 'center' })
+          if (followRef.current) {
+            if (pagedRef.current) {
+              // narration auto-flip: follow the spoken word across pages
+              const p = pageOfEl(el)
+              if (p !== pageRef.current) setPage(p)
+            } else {
+              el.scrollIntoView({ block: 'center' })
+            }
+          }
         }
         last = el
       }
@@ -153,9 +291,66 @@ export default function TextPane({
   }, [highlightStyle, indices])
 
   const markUserScroll = () => {
+    if (pagedRef.current) return // wheel does nothing in paged mode
     if (usePlayerStore.getState().followMode)
       usePlayerStore.getState().setFollow(false)
   }
+
+  // ---- paged geometry: derive page width, then re-measure every render ---
+  // (renders are the only way the column DOM changes: window slides, SSE
+  // chunk updates, CAP expansion — so a per-render pass covers them all)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!paged || !el) return
+    const compute = () => {
+      const margin = el.clientWidth < 640 ? 12 : PAGE_MARGIN
+      setPageW(Math.max(200, Math.min(672, el.clientWidth - 2 * margin)))
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [paged])
+
+  useLayoutEffect(() => {
+    if (!paged) return
+    remeasure()
+    document.fonts?.ready?.then(() => remeasure()).catch(() => undefined)
+  })
+
+  // chapter jumps (jumpToSection nonce) and search reveals arrive as store
+  // state / window events — the pane owns all layout navigation
+  useEffect(() => {
+    if (!jump) return
+    const t = setTimeout(() => {
+      const el = containerRef.current?.querySelector(`[data-section="${jump.idx}"]`)
+      if (!el) return
+      if (pagedRef.current) setPage(pageOfEl(el as HTMLElement))
+      else el.scrollIntoView({ block: 'start' })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [jump])
+
+  useEffect(() => {
+    const onPage = (e: Event) => {
+      if (!pagedRef.current) return
+      flip((e as CustomEvent).detail.delta)
+    }
+    const onReveal = (e: Event) => {
+      const d = (e as CustomEvent).detail as { sel: string; block: ScrollLogicalPosition }
+      const el = containerRef.current?.querySelector(d.sel) as HTMLElement | null
+      const p = (el?.closest('p') as HTMLElement | null) ?? el
+      if (!p) return
+      if (pagedRef.current) setPage(pageOfEl(p))
+      else p.scrollIntoView({ block: d.block })
+    }
+    window.addEventListener('recite:page', onPage)
+    window.addEventListener('recite:reveal', onReveal)
+    return () => {
+      window.removeEventListener('recite:page', onPage)
+      window.removeEventListener('recite:reveal', onReveal)
+    }
+  }, [])
 
   // user-highlight interaction: select -> menu; click mark -> remove
   useEffect(() => {
@@ -238,37 +433,104 @@ export default function TextPane({
     setMenu(null)
   }
 
+  const sections = indices.map((i) => {
+    const ds = doc.sections.find((s) => s.idx === i)!
+    const ms = manifest.sections.find((s) => s.idx === i)!
+    const entry = timeline?.byIndex[i]
+    return (
+      <SectionView
+        key={i}
+        docSection={ds}
+        manSection={ms}
+        sectionStartMs={entry?.startMs ?? 0}
+        hlIndex={hlIndex}
+      />
+    )
+  })
+
   return (
     <div className="relative min-h-0 flex-1">
       <div
         ref={containerRef}
-        className="recite-scroll h-full overflow-y-auto px-3 pb-40 pt-6 sm:px-6 sm:pt-8 sm:pb-44"
+        className={
+          paged
+            ? 'recite-page h-full pt-6 pb-40 sm:pb-44'
+            : 'recite-scroll h-full overflow-y-auto px-3 pb-40 pt-6 sm:px-6 sm:pt-8 sm:pb-44'
+        }
         onWheel={markUserScroll}
         onTouchMove={markUserScroll}
+        onPointerDown={
+          paged
+            ? (e) => {
+                swipeRef.current = { x: e.clientX, y: e.clientY }
+              }
+            : undefined
+        }
+        onPointerUp={
+          paged
+            ? (e) => {
+                const s = swipeRef.current
+                swipeRef.current = null
+                if (!s) return
+                const dx = e.clientX - s.x
+                const dy = e.clientY - s.y
+                if (Math.abs(dx) > 48 && Math.abs(dx) > 2 * Math.abs(dy))
+                  flip(dx < 0 ? 1 : -1)
+              }
+            : undefined
+        }
       >
-        <div
-          className="mx-auto max-w-[42rem] font-[family-name:var(--reader-font,Georgia,'Times_New_Roman',serif)]"
-          style={{
-            fontSize: 'var(--reader-font-size, 19px)',
-            lineHeight: 'var(--reader-line-height, 1.7)',
-          }}
-        >
-          {indices.map((i) => {
-            const ds = doc.sections.find((s) => s.idx === i)!
-            const ms = manifest.sections.find((s) => s.idx === i)!
-            const entry = timeline?.byIndex[i]
-            return (
-              <SectionView
-                key={i}
-                docSection={ds}
-                manSection={ms}
-                sectionStartMs={entry?.startMs ?? 0}
-                hlIndex={hlIndex}
-              />
-            )
-          })}
-        </div>
+        {paged ? (
+          <div
+            ref={trackRef}
+            className="page-track mx-auto"
+            style={{
+              width: pageW || undefined,
+              transform: `translateX(${-(page * (pageW + PAGE_GAP))}px)`,
+            }}
+          >
+            <div
+              ref={colsRef}
+              className="page-cols font-[family-name:var(--reader-font,Georgia,'Times_New_Roman',serif)]"
+              style={{
+                width: pageW || undefined,
+                columnWidth: pageW || undefined,
+                columnGap: PAGE_GAP,
+                fontSize: 'var(--reader-font-size, 19px)',
+                lineHeight: 'var(--reader-line-height, 1.7)',
+              }}
+            >
+              {sections}
+            </div>
+          </div>
+        ) : (
+          <div
+            className="mx-auto max-w-[42rem] font-[family-name:var(--reader-font,Georgia,'Times_New_Roman',serif)]"
+            style={{
+              fontSize: 'var(--reader-font-size, 19px)',
+              lineHeight: 'var(--reader-line-height, 1.7)',
+            }}
+          >
+            {sections}
+          </div>
+        )}
       </div>
+      {paged && (
+        <>
+          <button
+            className="page-hotspot left-0"
+            aria-label="Previous page"
+            title="Previous page"
+            onClick={() => flip(-1)}
+          />
+          <button
+            className="page-hotspot right-0"
+            aria-label="Next page"
+            title="Next page"
+            onClick={() => flip(1)}
+          />
+        </>
+      )}
       {menu && (
         <div
           ref={menuRef}

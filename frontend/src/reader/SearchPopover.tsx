@@ -63,13 +63,21 @@ export default function SearchPopover({
     if (entry?.ready && chunk)
       usePlayerStore.getState().seek(entry.startMs + chunk.global_start_ms)
     else usePlayerStore.getState().jumpToSection(hit.sec)
-    // land the eye on the paragraph once the ±1 window has rendered
+    // land the eye on the paragraph once the ±1 window has rendered; the
+    // pane owns layout navigation (scroll or page flip)
     setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent('recite:reveal', {
+          detail: {
+            sel: `[data-section="${hit.sec}"] span[data-para="${hit.para}"]`,
+            block: 'center',
+          },
+        }),
+      )
       const el = document.querySelector(
         `[data-section="${hit.sec}"] span[data-para="${hit.para}"]`,
       )
       const p = el?.closest('p')
-      p?.scrollIntoView({ block: 'center' })
       p?.classList.add('search-flash')
       setTimeout(() => p?.classList.remove('search-flash'), 1400)
     }, 80)

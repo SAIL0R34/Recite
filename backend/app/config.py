@@ -60,4 +60,6 @@ DEFAULT_SETTINGS = {
     "fontFamily": "Georgia, serif",
     "highlightStyle": "highlighter",  # highlighter | underline
     "alignment": "auto",              # auto | interp (whisperx used when available)
+    "readingMode": "scroll",          # scroll | paged (columns + page turns)
+    "pageAnimations": False,          # opt-in motion: page turns, smooth reveals
 }

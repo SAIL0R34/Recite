@@ -11,10 +11,22 @@ const DEFAULTS: Settings = {
   fontFamily: 'Georgia, serif',
   highlightStyle: 'highlighter',
   alignment: 'auto',
+  readingMode: 'scroll',
+  pageAnimations: false,
 }
 
 /** Cache key read by the pre-paint script in index.html to avoid a theme flash. */
 const CACHE_KEY = 'recite:settings'
+
+/** Last-applied subset persisted by applyTheme (theme vars + layout keys). */
+function cachedSubset(): Partial<Settings> | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null') as Partial<Settings> | null
+  } catch {
+    return null
+  }
+}
 
 function applyTheme(s: Settings | null): void {
   if (typeof document === 'undefined' || !s) return
@@ -31,6 +43,8 @@ function applyTheme(s: Settings | null): void {
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
       fontFamily: s.fontFamily,
+      readingMode: s.readingMode,
+      pageAnimations: s.pageAnimations,
     }))
   } catch {
     /* storage unavailable (private mode) — flash comes back, nothing breaks */
@@ -50,7 +64,9 @@ let putTimer: ReturnType<typeof setTimeout> | null = null
 let inflight: Promise<void> | null = null
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  settings: null,
+  // Hydrated from the cache so layout-affecting keys (readingMode) are
+  // right before the first server response; load() overwrites wholesale.
+  settings: { ...DEFAULTS, ...(cachedSubset() ?? {}) },
   loaded: false,
 
   async load() {

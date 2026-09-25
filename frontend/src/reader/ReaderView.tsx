@@ -14,6 +14,7 @@ import {
 import { sseSupported, subscribeToBookEvents } from '../api/sse'
 import { useLibraryStore } from '../stores/libraryStore'
 import { usePlayerStore } from '../stores/playerStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { useHighlightStore } from '../stores/highlightStore'
 import { engine } from '../player/engine'
 import TextPane from './TextPane'
@@ -114,18 +115,8 @@ export default function ReaderView() {
     void useHighlightStore.getState().refresh(bookId)
   }, [bookId])
 
-  // Chapter jump: scroll the newly-rendered section to the top once React
-  // has committed it (a beat of timeout is enough for the ±1 window).
-  const jump = store.jump
-  useEffect(() => {
-    if (!jump) return
-    const t = setTimeout(() => {
-      document
-        .querySelector(`[data-section="${jump.idx}"]`)
-        ?.scrollIntoView({ block: 'start' })
-    }, 60)
-    return () => clearTimeout(t)
-  }, [jump])
+  // Chapter jumps: the pane owns layout navigation (scroll or page flip) —
+  // see TextPane's jump watcher.
 
   // The TTS window follows the cursor (budget + grace live server-side);
   // idempotent and cheap for fully-ready books.
@@ -283,6 +274,13 @@ export default function ReaderView() {
   }, [doc, book])
 
   // ---- keyboard ------------------------------------------------------------
+  // paged mode: bare arrows flip pages (Shift keeps the ±60 s seek);
+  // reads the store snapshot so the handler needs no re-subscription
+  const pagedMode = () =>
+    useSettingsStore.getState().settings?.readingMode === 'paged'
+  const pageFlip = (delta: number) =>
+    window.dispatchEvent(new CustomEvent('recite:page', { detail: { delta } }))
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -300,11 +298,25 @@ export default function ReaderView() {
           break
         case 'ArrowRight':
           e.preventDefault()
-          st.seekBy(e.shiftKey ? 60_000 : 10_000)
+          if (pagedMode() && !e.shiftKey) pageFlip(1)
+          else st.seekBy(e.shiftKey ? 60_000 : 10_000)
           break
         case 'ArrowLeft':
           e.preventDefault()
-          st.seekBy(e.shiftKey ? -60_000 : -10_000)
+          if (pagedMode() && !e.shiftKey) pageFlip(-1)
+          else st.seekBy(e.shiftKey ? -60_000 : -10_000)
+          break
+        case 'PageDown':
+          if (pagedMode()) {
+            e.preventDefault()
+            pageFlip(1)
+          }
+          break
+        case 'PageUp':
+          if (pagedMode()) {
+            e.preventDefault()
+            pageFlip(-1)
+          }
           break
         case 'j':
         case 'J':

@@ -1,5 +1,5 @@
 import { useSettingsStore } from '../stores/settingsStore'
-import type { HighlightStyle, Theme } from '../types'
+import type { HighlightStyle, ReadingMode, Theme } from '../types'
 
 const THEMES: { id: Theme; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -95,6 +95,28 @@ export default function AppearancePanel() {
             </button>
           ))}
         </div>
+      </div>
+      <div>
+        <p className="mb-1 font-medium">Reading</p>
+        <div className="flex gap-1">
+          {(
+            [
+              ['scroll', 'Scroll'],
+              ['paged', 'Pages'],
+            ] as [ReadingMode, string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={`btn btn-sm ${s.readingMode === id ? 'btn-accent' : ''}`}
+              onClick={() => update({ readingMode: id })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+          Pages fill the screen and turn; narration flips them for you.
+        </p>
       </div>
     </div>
   )

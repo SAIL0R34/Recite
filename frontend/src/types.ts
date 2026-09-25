@@ -110,6 +110,8 @@ export interface Bookmark {
 export type Theme = 'light' | 'sepia' | 'dark'
 export type HighlightStyle = 'highlighter' | 'underline'
 
+export type ReadingMode = 'scroll' | 'paged'
+
 export interface Settings {
   voice: string
   theme: Theme
@@ -118,6 +120,8 @@ export interface Settings {
   fontFamily: string
   highlightStyle: HighlightStyle
   alignment: string
+  readingMode: ReadingMode
+  pageAnimations: boolean
 }
 
 export interface StatusCounts {

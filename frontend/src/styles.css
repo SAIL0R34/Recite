@@ -148,6 +148,35 @@ body {
   }
 }
 
+/* ---- paged reading (multi-column strip) -------------------------------- */
+
+.recite-page {
+  position: relative;
+  overflow: hidden;
+}
+
+.page-track {
+  height: 100%;
+  will-change: transform;
+}
+
+.page-cols {
+  height: 100%;
+  column-fill: auto;
+}
+
+.page-hotspot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: min(14vw, 56px);
+  z-index: 10;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
 /* ---- scrubber ---------------------------------------------------------- */
 
 /* The played portion is filled via the --played custom property set by
