@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import LibraryView from './library/LibraryView'
 import ReaderView from './reader/ReaderView'
 import { useLibraryStore } from './stores/libraryStore'
@@ -19,26 +19,38 @@ function NotFound() {
 }
 
 export default function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
+  )
+}
+
+function AppShell() {
   const [appearanceOpen, setAppearanceOpen] = useState(false)
   // main.tsx loads settings pre-render; if the backend was down then, retry once
   useEffect(() => {
     if (!useSettingsStore.getState().loaded) void useSettingsStore.getState().load()
   }, [])
 
+  // The reader route carries its own Aa control in its toolbar — showing
+  // both duplicated the appearance menu on book pages.
+  const onReader = useLocation().pathname.startsWith('/book')
+
   return (
-    <BrowserRouter>
-      <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
-        <header
-          className="flex items-center justify-between border-b px-5 py-2.5"
-          style={{ borderColor: 'var(--border)' }}
-        >
-          <a href="/" className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold tracking-tight">Recite</span>
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>
-              listen &amp; read along
-            </span>
-          </a>
-          <div className="flex items-center gap-2">
+    <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
+      <header
+        className="flex items-center justify-between border-b px-5 py-2.5"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        <a href="/" className="flex items-baseline gap-2">
+          <span className="text-lg font-semibold tracking-tight">Recite</span>
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+            listen &amp; read along
+          </span>
+        </a>
+        <div className="flex items-center gap-2">
+          {!onReader && (
             <button
               className="btn btn-sm"
               onClick={() => setAppearanceOpen((v) => !v)}
@@ -46,32 +58,32 @@ export default function App() {
             >
               Aa
             </button>
-            <button
-              className="btn btn-sm"
-              onClick={() => void useLibraryStore.getState().refresh()}
-              title="Refresh library"
-            >
-              ↻
-            </button>
-          </div>
-        </header>
-        {appearanceOpen && (
-          <div className="absolute right-4 top-12 z-40">
-            <AppearancePanel />
-          </div>
-        )}
-        {/* main never scrolls: the library view and the reader pane own their
-            own scrollbars, so no wheel over the transport bar can move the UI */}
-        <main className="min-h-0 flex-1 overflow-hidden">
-          <Routes>
-            <Route path="/" element={<LibraryView />} />
-            <Route path="/book/:id" element={<ReaderView />} />
-            <Route path="/book" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </main>
-        <ToastHost />
-      </div>
-    </BrowserRouter>
+          )}
+          <button
+            className="btn btn-sm"
+            onClick={() => void useLibraryStore.getState().refresh()}
+            title="Refresh library"
+          >
+            ↻
+          </button>
+        </div>
+      </header>
+      {appearanceOpen && !onReader && (
+        <div className="absolute right-4 top-12 z-40">
+          <AppearancePanel />
+        </div>
+      )}
+      {/* main never scrolls: the library view and the reader pane own their
+        own scrollbars, so no wheel over the transport bar can move the UI */}
+      <main className="min-h-0 flex-1 overflow-hidden">
+        <Routes>
+          <Route path="/" element={<LibraryView />} />
+          <Route path="/book/:id" element={<ReaderView />} />
+          <Route path="/book" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
+      <ToastHost />
+    </div>
   )
 }
