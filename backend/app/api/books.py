@@ -57,6 +57,19 @@ def list_books():
             b["warnings"] = json.loads(b.get("warnings") or "[]")
         except json.JSONDecodeError:
             b["warnings"] = []
+        # narration progress for freshly added books (None before the
+        # manifest exists, i.e. mid-ingest or a seeded row)
+        try:
+            m = manifestio.load(b["id"])
+            if m:
+                s = manifestio.generation_summary(m)
+                b["generation"] = {
+                    "ready": s["ready"], "total": s["total"], "failed": s["failed"],
+                }
+                continue
+        except Exception:
+            pass
+        b["generation"] = None
     return books
 
 

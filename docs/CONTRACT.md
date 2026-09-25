@@ -47,7 +47,7 @@ sample-library/sample.epub     # copy of the bundled sample book (POST /sample)
 
 | Route | Verb | Notes |
 |---|---|---|
-| `/api/books` | GET/POST | POST `{path}`; 422 = refusal with message. GET rows include `percent` and `last_read` (progress.updated_at, null when never opened) |
+| `/api/books` | GET/POST | POST `{path}`; 422 = refusal with message. GET rows include `percent`, `last_read` (progress.updated_at, null when never opened) and `generation {ready,total,failed}` (null before the manifest exists) |
 | `/api/books/sample` | POST | copy the bundled public-domain sample into DATA_DIR + ingest; idempotent (stable path → `already_present`) |
 | `/api/books/library` | GET | browse list under BOOKS_DIR |
 | `/api/books/{id}` | DELETE | |

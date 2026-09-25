@@ -25,6 +25,22 @@ def test_list_books_empty(client):
     assert client.get("/api/books").json() == []
 
 
+def test_list_books_generation(client, book_id):
+    from app import manifestio
+
+    # no manifest yet (mid-ingest / seeded row) → generation is null
+    assert client.get("/api/books").json()[0]["generation"] is None
+    sections = [
+        {"idx": 0, "title": "One", "chunks": [], "tts": False, "status": "ready"},
+        {"idx": 1, "title": "Two", "chunks": [], "status": "pending"},
+        {"idx": 2, "title": "Three", "chunks": [], "status": "failed"},
+    ]
+    manifestio.init_manifest(book_id, sections=sections, engine="kokoro",
+                             voice="af_heart")
+    g = client.get("/api/books").json()[0]["generation"]
+    assert g == {"ready": 1, "total": 3, "failed": 1}
+
+
 def test_progress_roundtrip(client, book_id):
     body = {"section_idx": 2, "word_idx": 5, "ms_into_section": 1234, "percent": 0.42}
     assert client.put(f"/api/books/{book_id}/progress", json=body).status_code == 200

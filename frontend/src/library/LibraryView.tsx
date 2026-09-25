@@ -16,6 +16,17 @@ export default function LibraryView() {
     void useLibraryStore.getState().refresh()
   }, [])
 
+  // While any book is still generating narration, refresh the list so its
+  // progress bar moves; stop once everything is done.
+  const generating = books.some(
+    (b) => b.generation && b.generation.ready < b.generation.total,
+  )
+  useEffect(() => {
+    if (!generating) return
+    const t = setInterval(() => void useLibraryStore.getState().refresh(), 4000)
+    return () => clearInterval(t)
+  }, [generating])
+
   const hero = useMemo(
     () =>
       books

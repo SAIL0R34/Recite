@@ -73,6 +73,7 @@ export default function BookCard({ book }: { book: BookSummary }) {
   const refresh = useLibraryStore((s) => s.refresh)
   const [rechucking, setRechucking] = useState(false)
   const warn = (book.warnings?.length ?? 0) > 0
+  const gen = book.generation
 
   return (
     <div
@@ -94,6 +95,36 @@ export default function BookCard({ book }: { book: BookSummary }) {
         </div>
         <Ring percent={book.percent ?? 0} />
       </div>
+      {gen && gen.ready < gen.total && (
+        <div>
+          <div
+            className="h-1.5 overflow-hidden rounded-full"
+            style={{ background: 'var(--surface-2)' }}
+            role="progressbar"
+            aria-label="narration progress"
+            aria-valuemin={0}
+            aria-valuemax={gen.total}
+            aria-valuenow={gen.ready}
+          >
+            <div
+              className="h-full rounded-full transition-[width] duration-500"
+              style={{
+                width: `${gen.total ? (gen.ready / gen.total) * 100 : 0}%`,
+                background: 'var(--accent)',
+              }}
+            />
+          </div>
+          <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+            Generating narration — {gen.ready}/{gen.total} parts
+            {gen.failed > 0 && (
+              <span style={{ color: 'var(--danger)' }}>
+                {' '}
+                · {gen.failed} failed (open the book to retry)
+              </span>
+            )}
+          </p>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--muted)' }}>
         <span
           className="rounded px-1.5 py-0.5 uppercase"

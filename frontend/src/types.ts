@@ -14,6 +14,8 @@ export interface BookSummary {
   updated_at: string
   /** epoch seconds of the last reading session; null when never opened */
   last_read?: number | null
+  /** narration progress; null before the manifest exists */
+  generation?: { ready: number; total: number; failed: number } | null
 }
 
 export interface LibraryEntry {
