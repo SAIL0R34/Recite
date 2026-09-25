@@ -387,6 +387,7 @@ function SectionView({
           sectionStartMs={sectionStartMs}
           sectionId={docSection.idx}
           doneSet={doneSet}
+          sectionReady={manSection.status === 'ready'}
           marks={hlIndex.get(`${docSection.idx}:${p.idx}`)}
         />
       ))}
@@ -408,6 +409,7 @@ function ParagraphView({
   doneSet = new Set<number>(),
   sectionStartMs,
   sectionId,
+  sectionReady,
   marks,
 }: {
   para: DocParagraph
@@ -415,6 +417,8 @@ function ParagraphView({
   sectionStartMs: number
   sectionId: number
   doneSet?: Set<number>
+  /** section audio is ready — slim chunks without timings are NOT dimmed */
+  sectionReady: boolean
   marks?: Map<number, Highlight>
 }) {
   const nodes: React.ReactNode[] = []
@@ -490,14 +494,17 @@ function ParagraphView({
     for (const c of chunks) {
       const ready = c.status === 'ready' && !!c.words
       const done = ready || doneSet.has(c.idx)
-      if (!done) anyPending = true
+      // A words-less chunk in a ready section only lacks timings (they land
+      // via ensureTimings moments later) — it must not flash dim.
+      const dim = !done && !sectionReady
+      if (dim) anyPending = true
       const [a, b] = c.sentence_range
       let k = 0
       for (const s of para.sentences) {
         if (s.idx < a || s.idx > b) continue
         for (const token of s.words) {
           const t = ready ? c.words![k++] ?? null : null
-          pushToken(token, t, c.idx, k - 1, !done)
+          pushToken(token, t, c.idx, k - 1, dim)
         }
       }
     }

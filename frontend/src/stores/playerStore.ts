@@ -10,7 +10,6 @@ import type {
 import {
   buildTimeline,
   chunkAt,
-  positionToGlobal,
   type Timeline,
 } from '../player/timeline'
 import { engine } from '../player/engine'
@@ -38,6 +37,7 @@ export interface PlayerState {
     document: BookDocument,
     manifest: Manifest,
     percent: number,
+    resume?: Progress | null,
   ) => Promise<void>
   setManifest: (manifest: Manifest) => void
   noteChunk: (sec: number, chunk: number) => void
@@ -61,8 +61,6 @@ export interface PlayerState {
   setFollow: (on: boolean) => void
   /** snapshot for progress persistence */
   currentProgress: () => Progress | null
-  /** global ms from stored progress (sectionStart + ms_into_section) */
-  resumeFrom: (p: Progress) => void
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -80,9 +78,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   followMode: true,
   percent: 0,
 
-  async load(bookId, document, manifest, percent) {
+  async load(bookId, document, manifest, percent, resume) {
     const timeline = buildTimeline(manifest)
-    const first = timeline.entries.find((e) => e.ready) ?? timeline.entries[0]
+    engine.load(bookId, manifest) // first, so nearestReady works below
+    // Start where the reader left off when we know it — the first render
+    // then mounts the right section window, so opening a book never jumps.
+    let first = timeline.entries.find((e) => e.ready) ?? timeline.entries[0]
+    let startMs = first ? first.startMs : 0
+    if (resume && timeline.entries.length) {
+      const e = timeline.byIndex[resume.section_idx]
+      if (e?.ready) {
+        first = e
+        startMs =
+          e.startMs +
+          Math.max(0, Math.min(resume.ms_into_section ?? 0, e.durationMs))
+      } else {
+        const near = engine.nearestReady(resume.section_idx)
+        const ne = near !== null ? timeline.byIndex[near] : undefined
+        if (ne) {
+          first = ne
+          startMs = ne.startMs
+        }
+      }
+    }
     set({
       bookId,
       document,
@@ -90,10 +108,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       timeline,
       percent,
       sectionIdx: first ? first.section : 0,
-      globalMs: first ? first.startMs : 0,
+      globalMs: startMs,
       followMode: true,
     })
-    engine.load(bookId, manifest)
+    if (resume) void engine.seekToGlobalMs(startMs) // parks <audio> at the same spot
   },
 
   async ensureTimings(idx) {
@@ -254,29 +272,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       active: get().playing ? 1 : 0,
       section_start_ms: timeline.byIndex[pos.section]?.startMs ?? 0,
     }
-  },
-
-  resumeFrom(p) {
-    const { timeline } = get()
-    if (!timeline) return
-    const e = timeline.byIndex[p.section_idx]
-    // The section must have audio to land on; otherwise hop to the nearest
-    // ready one so a refresh never parks the reader on dead air.
-    const target = e?.ready
-      ? { section: p.section_idx, offset: p.ms_into_section ?? 0 }
-      : { section: p.section_idx, offset: 0 }
-    const g = positionToGlobal(timeline, target.section, target.offset)
-    if (e?.ready) {
-      get().seek(g)
-      if (p.active) get().play()
-      return
-    }
-    const near = engine.nearestReady(p.section_idx)
-    if (near !== null) {
-      const ne = timeline.byIndex[near]
-      if (ne) get().seek(ne.startMs)
-    }
-    // nothing ready anywhere: stay parked at the stored position
   },
 }))
 

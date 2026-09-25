@@ -40,8 +40,10 @@ export default function ReaderView() {
   const timeline = store.timeline
 
   // ---- load -----------------------------------------------------------
-  // Text-first: the document alone paints prose instantly (stub manifest);
-  // the slim manifest (no word timings) follows and upgrades the UI.
+  // One paint when doc + slim manifest + progress are all in: the old
+  // stub-then-slim double paint flashed headings, then dimmed prose, then
+  // re-dimmed per section. Resume rides into load() so the first render
+  // already mounts the right section window — no post-open jump.
   useEffect(() => {
     let dead = false
     setError(null)
@@ -50,35 +52,33 @@ export default function ReaderView() {
     void (async () => {
       try {
         const docP = getDocument(bookId)
-        const slimP = getManifest(bookId, { slim: true })
+        const slimP = getManifest(bookId, { slim: true }).catch(() => null)
         const refreshP = useLibraryStore
           .getState()
           .refresh().then(() => undefined)
-        void docP.then((d) => {
-          if (!dead && !manifest) {
-            setDoc(d)
-            setManifest(stubManifest(d))
-          }
-        }).catch(() => { /* main try/catch below reports it */ })
-        const [d, m] = await Promise.all([docP, slimP, refreshP])
+        const progressP = getProgress(bookId).catch(() => null)
+        const [d, slim, , p] = await Promise.all([docP, slimP, refreshP, progressP])
         if (dead) return
+        // one retry — a manifest read can race a rechunk rewrite
+        const m =
+          slim ?? (await getManifest(bookId, { slim: true }).catch(() => null))
+        const man = m ?? stubManifest(d) // headings only; SSE/poll reload() recovers
         setDoc(d)
-        setManifest(m)
+        setManifest(man)
         const percent = useLibraryStore
           .getState()
           .books.find((b) => b.id === bookId)?.percent ?? 0
-        await usePlayerStore.getState().load(bookId, d, m, percent)
-        const p = await getProgress(bookId)
+        await usePlayerStore.getState().load(bookId, d, man, percent, p)
         if (dead) return
-        if (p) usePlayerStore.getState().resumeFrom(p)
+        if (p?.active) usePlayerStore.getState().play()
         // Nothing spoken yet and the queue idle → start TTS now. Bias: the
         // section in view, unless it's huge (a 700-chunk front matter is
         // ~25 min of synthesis) — then the smallest pending section so
         // something becomes audible soon.
         const inflight = ["ready", "synthesizing", "aligning", "encoding"]
-        const pending = m.sections.filter((s) => s.status === "pending")
-        if (!m.sections.some((s) => inflight.includes(s.status)) && pending.length) {
-          const cur = m.sections[usePlayerStore.getState().sectionIdx]
+        const pending = man.sections.filter((s) => s.status === "pending")
+        if (!man.sections.some((s) => inflight.includes(s.status)) && pending.length) {
+          const cur = man.sections[usePlayerStore.getState().sectionIdx]
           const boost =
             cur && cur.status === "pending" && (cur.chunks?.length ?? 0) <= 400
               ? cur.idx

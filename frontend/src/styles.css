@@ -79,7 +79,7 @@ body {
 
 .kw {
   border-radius: 2px;
-  transition: background-color 80ms ease;
+  transition: background-color 80ms ease, opacity 200ms ease;
 }
 
 .kw.kar-active.kar-highlighter {
