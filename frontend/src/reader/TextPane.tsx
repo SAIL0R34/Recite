@@ -15,6 +15,8 @@ import { requestGeneration } from '../api/client'
 import type { Timeline } from '../player/timeline'
 import { clampPage, pageCountFor, pageForX, sectionForPage } from './paged'
 import type { PageGeom, SectionPageBound } from './paged'
+import { planMarkAction } from './highlights'
+import type { ExistingMark } from './highlights'
 
 const MARK_COLORS = ['amber', 'green', 'sky', 'rose'] as const
 
@@ -51,6 +53,8 @@ interface Menu {
   start: number
   end: number
   text: string
+  /** marks already covering the selection (toggle/replace semantics) */
+  existing: ExistingMark[]
 }
 
 /**
@@ -391,16 +395,30 @@ export default function TextPane({
       const anchor = t1 <= t2 ? a : b
       const wrap = containerRef.current?.parentElement
       if (!wrap) return
+      const sec = Number(a.dataset.sec)
+      const para = Number(a.dataset.para)
+      // read the store at event time: this handler mounts once ([] deps)
+      const existing: ExistingMark[] = useHighlightStore
+        .getState()
+        .list.filter(
+          (h) =>
+            h.section_idx === sec &&
+            h.para_idx === para &&
+            h.start_ti <= end &&
+            h.end_ti >= start,
+        )
+        .map((h) => ({ id: h.id, color: h.color }))
       const r = anchor.getBoundingClientRect()
       const wr = wrap.getBoundingClientRect()
       setMenu({
         x: Math.max(8, r.left - wr.left),
         y: r.top - wr.top - 40,
-        sec: Number(a.dataset.sec),
-        para: Number(a.dataset.para),
+        sec,
+        para,
         start,
         end,
         text: sel.toString().slice(0, 240),
+        existing,
       })
     }
     const onClick = (e: MouseEvent) => {
@@ -427,16 +445,22 @@ export default function TextPane({
     }
   }, [])
 
+  // Toggle: choosing the color the passage already wears removes it; any
+  // other choice replaces what's there (never two marks stacked).
   const applyMark = (color: string) => {
     if (!menu) return
-    void useHighlightStore.getState().add({
-      section_idx: menu.sec,
-      para_idx: menu.para,
-      start_ti: menu.start,
-      end_ti: menu.end,
-      color,
-      text: menu.text,
-    })
+    const { removeIds, addColor } = planMarkAction(menu.existing, color)
+    const store = useHighlightStore.getState()
+    for (const id of removeIds) void store.remove(id)
+    if (addColor)
+      void store.add({
+        section_idx: menu.sec,
+        para_idx: menu.para,
+        start_ti: menu.start,
+        end_ti: menu.end,
+        color,
+        text: menu.text,
+      })
     window.getSelection()?.removeAllRanges()
     setMenu(null)
   }
@@ -549,14 +573,21 @@ export default function TextPane({
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={(e) => e.preventDefault()}
         >
-          {MARK_COLORS.map((c) => (
-            <button
-              key={c}
-              className={`kar-menu-swatch kar-menu-${c}`}
-              title={`highlight (${c}) — click a marked passage to remove`}
-              onClick={() => applyMark(c)}
-            />
-          ))}
+          {MARK_COLORS.map((c) => {
+            const active = menu.existing.some((e) => e.color === c)
+            return (
+              <button
+                key={c}
+                className={`kar-menu-swatch kar-menu-${c}${active ? ' kar-menu-active' : ''}`}
+                title={
+                  active
+                    ? `remove ${c} highlight (choosing it again clears the passage)`
+                    : `highlight (${c})`
+                }
+                onClick={() => applyMark(c)}
+              />
+            )
+          })}
           <button
             className="kar-menu-close"
             onClick={() => {

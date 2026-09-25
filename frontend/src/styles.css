@@ -390,6 +390,12 @@ input[type='range'].speed {
   border: 1px solid rgba(255, 255, 255, 0.18);
   cursor: pointer;
 }
+
+/* the color this passage already wears — picking it again removes the mark */
+.kar-menu-swatch.kar-menu-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .kar-menu-amber { background: #f5a623; }
 .kar-menu-green { background: #68bc74; }
 .kar-menu-sky   { background: #5eabde; }
