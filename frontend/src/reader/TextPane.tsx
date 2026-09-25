@@ -432,13 +432,25 @@ function ParagraphView({
     wordIdx: number,
     pending: boolean,
   ) => {
-    if (pending) anyPending = true
-    if (nodes.length && !(prevToken === null || isPunct(token)))
-      nodes.push(' ')
-    prevToken = token
+    // Mark lookup BEFORE the space emission: the same-mark peek at ti±1
+    // decides whether the inter-word space rides inside this span, so a
+    // multi-word mark reads as one continuous highlighter stroke.
     const mark = marks?.get(ti)
+    const joinL = !!mark && marks?.get(ti - 1)?.id === mark.id
+    const joinR = !!mark && marks?.get(ti + 1)?.id === mark.id
+    let text = token
+    if (pending) anyPending = true
+    if (nodes.length && !(prevToken === null || isPunct(token))) {
+      if (joinL) text = ' ' + token // backgrounds abut exactly
+      else nodes.push(' ')
+    }
+    prevToken = token
     let cls = `kw${pending ? ' kar-queued' : ''}`
-    if (mark) cls += ` kar-mark kar-mark-${mark.color}`
+    if (mark) {
+      cls += ` kar-mark kar-mark-${mark.color}`
+      if (joinL) cls += ' kar-mark-join-l'
+      if (joinR) cls += ' kar-mark-join-r'
+    }
     const tiHere = ti++
     const attrs = {
       'data-sec': sectionId,
@@ -457,13 +469,13 @@ function ParagraphView({
           data-chunk={chunkIdx}
           {...attrs}
         >
-          {token}
+          {text}
         </span>,
       )
     } else {
       nodes.push(
         <span key={gi++} className={cls} data-w-plain="1" {...attrs}>
-          {token}
+          {text}
         </span>,
       )
     }

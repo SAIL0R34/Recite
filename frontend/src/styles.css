@@ -308,6 +308,19 @@ input[type='range'].speed {
 .kar-mark-green { background: rgba(104, 188, 116, 0.30); }
 .kar-mark-sky   { background: rgba(94, 171, 222, 0.30); }
 .kar-mark-rose  { background: rgba(236, 116, 140, 0.30); }
+
+/* run shaping: square the sides that continue into the same mark, so a
+   multi-word mark reads as one stroke with rounded outer ends only */
+.kar-mark-join-l {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.kar-mark-join-r {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .kar-menu {
   position: absolute;
   z-index: 40;
