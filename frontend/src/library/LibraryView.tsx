@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useLibraryStore } from '../stores/libraryStore'
+import { useFlightStore } from '../stores/flightStore'
 import { startBookFlight } from '../motion'
 import BookCard, { BookCover } from './BookCard'
 import AddBookDialog from './AddBookDialog'
@@ -36,10 +37,12 @@ export default function LibraryView() {
     [books],
   )
   const heroCoverRef = useRef<HTMLDivElement>(null)
+  // while a cover lifts off the grid, the library recedes behind the scrim
+  const flightActive = useFlightStore((s) => s.active)
 
   return (
     <div className="recite-scroll h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl p-6">
+      <div className={`mx-auto max-w-5xl p-6${flightActive ? ' library-recede' : ''}`}>
         <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Library</h1>
@@ -66,7 +69,11 @@ export default function LibraryView() {
           to={`/book/${encodeURIComponent(hero.id)}`}
           className="card mb-6 flex items-center gap-5 p-4 transition-shadow hover:shadow-lg"
           title="Resume where you left off"
-          onClick={() => startBookFlight(heroCoverRef.current, hero)}
+          onClick={(e) => {
+            // hand off to the flight overlay (it navigates after the lift);
+            // otherwise let the Link proceed normally
+            if (startBookFlight(heroCoverRef.current, hero)) e.preventDefault()
+          }}
         >
           <div className="w-20 shrink-0" ref={heroCoverRef}>
             <BookCover book={hero} />

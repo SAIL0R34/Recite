@@ -78,8 +78,10 @@ export default function BookCard({ book }: { book: BookSummary }) {
   const gen = book.generation
 
   const open = () => {
-    startBookFlight(coverRef.current, book) // no-op unless animations on
-    navigate(`/book/${encodeURIComponent(book.id)}`)
+    // the flight overlay navigates at the lift→fly handoff so the library
+    // can recede first; without animations we go straight there
+    if (!startBookFlight(coverRef.current, book))
+      navigate(`/book/${encodeURIComponent(book.id)}`)
   }
 
   return (

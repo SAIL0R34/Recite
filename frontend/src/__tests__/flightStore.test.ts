@@ -5,10 +5,10 @@ import { useFlightStore } from '../stores/flightStore'
 
 describe('flightStore', () => {
   beforeEach(() => {
-    useFlightStore.getState().clear()
+    useFlightStore.getState().endFlight()
   })
 
-  it('begins a flight with the first nonce', () => {
+  it('begins a flight with the first nonce, active', () => {
     useFlightStore.getState().begin({
       bookId: 'b1',
       kind: 'img',
@@ -19,6 +19,7 @@ describe('flightStore', () => {
     const p = useFlightStore.getState().pending
     expect(p?.nonce).toBe(1)
     expect(p?.bookId).toBe('b1')
+    expect(useFlightStore.getState().active).toBe(true)
   })
 
   it('always replaces and increments the nonce', () => {
@@ -30,12 +31,23 @@ describe('flightStore', () => {
     expect(p?.nonce).toBeGreaterThan(1)
   })
 
-  it('clears', () => {
+  it('clear drops the payload but keeps the flight active', () => {
     useFlightStore.getState().begin({
       bookId: 'a', kind: 'img', title: '', author: '',
       from: { x: 0, y: 0, w: 10, h: 15 },
     })
     useFlightStore.getState().clear()
     expect(useFlightStore.getState().pending).toBeNull()
+    expect(useFlightStore.getState().active).toBe(true)
+  })
+
+  it('endFlight settles everything', () => {
+    useFlightStore.getState().begin({
+      bookId: 'a', kind: 'img', title: '', author: '',
+      from: { x: 0, y: 0, w: 10, h: 15 },
+    })
+    useFlightStore.getState().endFlight()
+    expect(useFlightStore.getState().pending).toBeNull()
+    expect(useFlightStore.getState().active).toBe(false)
   })
 })

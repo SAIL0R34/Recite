@@ -184,24 +184,103 @@ body {
   .pane-enter {
     animation: none;
   }
-  .book-flight-cover {
+  .book-flight-cover,
+  .book-flight-scrim {
     display: none; /* belt: the capture gate means it should never mount */
   }
 }
 
 /* ---- book-open flight (library card → reader) --------------------------- */
 
+.book-flight-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+
 .book-flight-cover {
   position: fixed;
   z-index: 50;
   overflow: hidden;
   background: var(--surface-2); /* an error frame never shows as an empty box */
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   pointer-events: none;
   will-change: transform, opacity;
-  transition:
-    transform 480ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    opacity 180ms ease-out;
+  perspective: 1200px;
+}
+
+/* the first page beneath the opening cover — paper with a spine crease */
+.book-flight-underside {
+  position: absolute;
+  inset: 0;
+  background: var(--surface);
+}
+
+.book-flight-underside::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.22),
+    rgba(0, 0, 0, 0.05) 12%,
+    transparent 30%
+  );
+}
+
+/* the right half of the cover, hinging open on the spine */
+.book-flight-flap {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+  transform-origin: left center;
+  transform: rotateY(0deg);
+  transition: transform 280ms cubic-bezier(0.42, 0.05, 0.3, 1);
+  backface-visibility: hidden;
+}
+
+.book-flight-flap.is-open {
+  transform: rotateY(-58deg);
+}
+
+/* full-size cover inside the half-width flap, aligned to its right half */
+.book-flight-flap-img {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 200%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* spine shading down the left edge — reads as a bound book */
+.book-flight-spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 7%;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.32),
+    rgba(0, 0, 0, 0.08) 55%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* the library recedes while the cover lifts off it */
+.library-recede {
+  transform: scale(0.98);
+  opacity: 0.65;
+  transition: transform 220ms ease-out, opacity 220ms ease-out;
 }
 
 .page-hotspot {
