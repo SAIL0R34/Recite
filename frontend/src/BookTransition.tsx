@@ -113,6 +113,8 @@ function Flight({ p, onDone }: { p: FlightPayload; onDone: () => void }) {
   const scrimOn = phase !== 'fade'
   const flapOpen = phase === 'open' || phase === 'fade'
 
+  const hasImg = imgOk && p.kind === 'img'
+
   return (
     <>
       <div
@@ -132,19 +134,33 @@ function Flight({ p, onDone }: { p: FlightPayload; onDone: () => void }) {
           opacity: fading ? 0 : 1,
         }}
       >
-        {/* full cover (or typographic card) — becomes the left page */}
-        <CoverVisual p={p} imgOk={imgOk} onImgError={() => setImgOk(false)} />
-        {/* first page revealed as the cover opens */}
-        <div className="book-flight-underside" />
-        {/* the right half of the cover, hinging on the spine */}
-        {p.kind === 'img' && imgOk && (
-          <div className={flapOpen ? 'book-flight-flap is-open' : 'book-flight-flap'}>
-            <img
-              src={coverUrl(p.bookId)}
-              alt=""
-              className="book-flight-flap-img"
-            />
-          </div>
+        {hasImg ? (
+          <>
+            {/* first page revealed as the cover opens (bottom layer) */}
+            <div className="book-flight-underside" />
+            {/* the LEFT half of the cover, static across the spine */}
+            <div className="book-flight-left">
+              <CoverVisual p={p} imgOk onImgError={() => setImgOk(false)} />
+            </div>
+            {/* the right half of the cover, hinging on the spine */}
+            <div className={flapOpen ? 'book-flight-flap is-open' : 'book-flight-flap'}>
+              <img
+                src={coverUrl(p.bookId)}
+                alt=""
+                className="book-flight-flap-img"
+              />
+            </div>
+            {/* title rides the cover, dissolving as the book opens */}
+            <div className={flapOpen ? 'book-flight-title is-hidden' : 'book-flight-title'}>
+              <span className="book-flight-title-name line-clamp-2">{p.title}</span>
+              {p.author && (
+                <span className="book-flight-title-author line-clamp-1">{p.author}</span>
+              )}
+            </div>
+          </>
+        ) : (
+          /* coverless book: the typographic card flies whole, title centered */
+          <CoverVisual p={p} imgOk={false} onImgError={() => setImgOk(false)} />
         )}
         {/* spine shading down the left edge — reads as a bound book */}
         <div className="book-flight-spine" />

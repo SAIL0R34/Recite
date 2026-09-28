@@ -220,6 +220,48 @@ body {
   background: var(--surface);
 }
 
+/* the static left half of the cover, clipped at the spine */
+.book-flight-left {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 50% 0 0);
+}
+
+/* title band riding the flying cover; dissolves as the book opens */
+.book-flight-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16% 8% 7%;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.62),
+    rgba(0, 0, 0, 0.24) 55%,
+    transparent
+  );
+  color: #f7f2e7;
+  pointer-events: none;
+  transition: opacity 240ms ease-out;
+}
+
+.book-flight-title.is-hidden {
+  opacity: 0;
+}
+
+.book-flight-title-name {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.book-flight-title-author {
+  font-size: 0.72em;
+  opacity: 0.85;
+}
+
 .book-flight-underside::after {
   content: '';
   position: absolute;
