@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { BookSummary } from '../types'
 import { useLibraryStore } from '../stores/libraryStore'
 import { coverUrl, rechunkBook } from '../api/client'
+import { startBookFlight } from '../motion'
 
 /** Cover thumbnail written at ingest; typographic card when absent (404). */
 export function BookCover({ book }: { book: BookSummary }) {
@@ -72,20 +73,26 @@ export default function BookCard({ book }: { book: BookSummary }) {
   const remove = useLibraryStore((s) => s.remove)
   const refresh = useLibraryStore((s) => s.refresh)
   const [rechucking, setRechucking] = useState(false)
+  const coverRef = useRef<HTMLDivElement>(null)
   const warn = (book.warnings?.length ?? 0) > 0
   const gen = book.generation
+
+  const open = () => {
+    startBookFlight(coverRef.current, book) // no-op unless animations on
+    navigate(`/book/${encodeURIComponent(book.id)}`)
+  }
 
   return (
     <div
       className="card flex cursor-pointer flex-col gap-3 p-4 transition-shadow hover:shadow-lg"
-      onClick={() => navigate(`/book/${encodeURIComponent(book.id)}`)}
+      onClick={open}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) =>
-        e.key === 'Enter' && navigate(`/book/${encodeURIComponent(book.id)}`)
-      }
+      onKeyDown={(e) => e.key === 'Enter' && open()}
     >
-      <BookCover book={book} />
+      <div ref={coverRef}>
+        <BookCover book={book} />
+      </div>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-medium leading-snug">{book.title}</h3>

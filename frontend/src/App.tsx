@@ -5,6 +5,7 @@ import { useLibraryStore } from './stores/libraryStore'
 import { useSettingsStore } from './stores/settingsStore'
 import AppearancePanel from './reader/AppearancePanel'
 import ToastHost from './library/ToastHost'
+import BookTransition from './BookTransition'
 import { useEffect, useState } from 'react'
 
 function NotFound() {
@@ -83,6 +84,7 @@ function AppShell() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
+      <BookTransition />
       <ToastHost />
     </div>
   )

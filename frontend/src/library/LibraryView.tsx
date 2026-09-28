@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useLibraryStore } from '../stores/libraryStore'
+import { startBookFlight } from '../motion'
 import BookCard, { BookCover } from './BookCard'
 import AddBookDialog from './AddBookDialog'
 
@@ -34,6 +35,7 @@ export default function LibraryView() {
         .sort((a, b) => (b.last_read! - a.last_read!))[0],
     [books],
   )
+  const heroCoverRef = useRef<HTMLDivElement>(null)
 
   return (
     <div className="recite-scroll h-full overflow-y-auto">
@@ -64,8 +66,9 @@ export default function LibraryView() {
           to={`/book/${encodeURIComponent(hero.id)}`}
           className="card mb-6 flex items-center gap-5 p-4 transition-shadow hover:shadow-lg"
           title="Resume where you left off"
+          onClick={() => startBookFlight(heroCoverRef.current, hero)}
         >
-          <div className="w-20 shrink-0">
+          <div className="w-20 shrink-0" ref={heroCoverRef}>
             <BookCover book={hero} />
           </div>
           <div className="min-w-0 flex-1">

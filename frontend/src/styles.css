@@ -184,6 +184,24 @@ body {
   .pane-enter {
     animation: none;
   }
+  .book-flight-cover {
+    display: none; /* belt: the capture gate means it should never mount */
+  }
+}
+
+/* ---- book-open flight (library card → reader) --------------------------- */
+
+.book-flight-cover {
+  position: fixed;
+  z-index: 50;
+  overflow: hidden;
+  background: var(--surface-2); /* an error frame never shows as an empty box */
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition:
+    transform 480ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 180ms ease-out;
 }
 
 .page-hotspot {

@@ -17,6 +17,7 @@ import { clampPage, pageCountFor, pageForX, sectionForPage } from './paged'
 import type { PageGeom, SectionPageBound } from './paged'
 import { planMarkAction } from './highlights'
 import type { ExistingMark } from './highlights'
+import { animOK } from '../motion'
 
 const MARK_COLORS = ['amber', 'green', 'sky', 'rose'] as const
 
@@ -28,11 +29,6 @@ const PAGE_MARGIN = 24
 type PageAnchor =
   | { kind: 'word'; sec: number; para: number; ti: number }
   | { kind: 'section'; sec: number }
-
-/** Motion is opt-in and reduced-motion always wins. */
-const animOK = () =>
-  useSettingsStore.getState().settings?.pageAnimations === true &&
-  !window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 // Light the active word this many ms *before* its aligned onset. Forced-
 // timestamps mark the exact spoken start, which is already a beat late for
