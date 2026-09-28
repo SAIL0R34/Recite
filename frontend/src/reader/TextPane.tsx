@@ -45,6 +45,25 @@ interface WordRef {
   s: number
 }
 
+/** Word at global time g (LEAD_MS-aware) — the rAF loop and the mount-time
+ *  positioning share this so they always agree on the same word. */
+function findActiveWord(words: WordRef[], g: number): HTMLElement | null {
+  if (!words.length) return null
+  let lo = 0
+  let hi = words.length - 1
+  let idx = -1
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1
+    if (words[m].s - LEAD_MS <= g) {
+      idx = m
+      lo = m + 1
+    } else {
+      hi = m - 1
+    }
+  }
+  return words[Math.max(0, idx)].el
+}
+
 interface Menu {
   x: number
   y: number
@@ -237,8 +256,9 @@ export default function TextPane({
   const [menu, setMenu] = useState<Menu | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
-  // (Re)query word spans once per render — not per frame.
-  useEffect(() => {
+  // (Re)query word spans once per render — not per frame. LAYOUT effect so
+  // the words exist before the browser paints (mount positioning needs them).
+  useLayoutEffect(() => {
     const el = containerRef.current
     if (!el) return
     const nodes = Array.from(
@@ -250,6 +270,25 @@ export default function TextPane({
       .sort((a, b) => a.s - b.s)
   }, [indices, manifestVersion, doc, manifest])
 
+  // Position BEFORE the first paint so the reader never renders the top of
+  // the previous section and jumps. Mount-only by design: SSE manifest
+  // swaps must not yank a paused reader back to the playhead, and window
+  // slides during playback are handled by the follow loop. Paged mode
+  // restores a page instead (see remeasure's restoredRef).
+  const positionedRef = useRef(false)
+  useLayoutEffect(() => {
+    if (positionedRef.current) return
+    positionedRef.current = true
+    if (pagedRef.current) return
+    const st = usePlayerStore.getState()
+    const word = findActiveWord(wordsRef.current, st.globalMs)
+    if (word) word.scrollIntoView({ block: 'center' })
+    else
+      containerRef.current
+        ?.querySelector(`[data-section="${st.sectionIdx}"]`)
+        ?.scrollIntoView({ block: 'start' })
+  }, [])
+
   // The one rAF loop: find active word (binary search), toggle one class.
   useEffect(() => {
     let raf = 0
@@ -258,23 +297,7 @@ export default function TextPane({
       highlightStyle === 'underline' ? 'kar-underline' : 'kar-highlighter'
     const tick = () => {
       const g = usePlayerStore.getState().globalMs
-      const words = wordsRef.current
-      let el: HTMLElement | null = null
-      if (words.length) {
-        let lo = 0
-        let hi = words.length - 1
-        let idx = -1
-        while (lo <= hi) {
-          const m = (lo + hi) >> 1
-          if (words[m].s - LEAD_MS <= g) {
-            idx = m
-            lo = m + 1
-          } else {
-            hi = m - 1
-          }
-        }
-        el = words[Math.max(0, idx)].el
-      }
+      const el = findActiveWord(wordsRef.current, g)
       if (el !== last) {
         if (last)
           last.classList.remove('kar-active', 'kar-highlighter', 'kar-underline')

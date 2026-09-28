@@ -41,10 +41,14 @@ export default function ReaderView() {
   const timeline = store.timeline
 
   // ---- load -----------------------------------------------------------
-  // One paint when doc + slim manifest + progress are all in: the old
-  // stub-then-slim double paint flashed headings, then dimmed prose, then
-  // re-dimmed per section. Resume rides into load() so the first render
-  // already mounts the right section window — no post-open jump.
+  // One POSITIONED paint. The old stub-then-slim double paint is long gone;
+  // the remaining glitch was paint #1 landing at the top of the *previous*
+  // section (nothing positioned before paint) and a hard jump to the resume
+  // word one timings round-trip later. Now the store loads invisibly behind
+  // the "Opening…" placeholder, the resume section's word timings (and
+  // highlights) join the initial parallel batch, and only then does the
+  // text paint — already centered on the right word (TextPane positions
+  // pre-paint). Fresh/pending books skip the timings hold entirely.
   useEffect(() => {
     let dead = false
     setError(null)
@@ -58,19 +62,32 @@ export default function ReaderView() {
           .getState()
           .refresh().then(() => undefined)
         const progressP = getProgress(bookId).catch(() => null)
-        const [d, slim, , p] = await Promise.all([docP, slimP, refreshP, progressP])
+        const hlP = useHighlightStore
+          .getState()
+          .refresh(bookId).then(() => undefined) // marks render in paint #1
+        const [d, slim, , p] = await Promise.all([docP, slimP, refreshP, progressP, hlP])
         if (dead) return
         // one retry — a manifest read can race a rechunk rewrite
         const m =
           slim ?? (await getManifest(bookId, { slim: true }).catch(() => null))
         const man = m ?? stubManifest(d) // headings only; SSE/poll reload() recovers
-        setDoc(d)
-        setManifest(man)
         const percent = useLibraryStore
           .getState()
           .books.find((b) => b.id === bookId)?.percent ?? 0
         await usePlayerStore.getState().load(bookId, d, man, percent, p)
         if (dead) return
+        // Hold the paint until the resume section's timings are in (a local
+        // fetch, tens of ms) so paint #1 carries data-s and positions. The
+        // race caps the hold so a hung request can't hold "Opening…"
+        // hostage; a fresh book's batch no-ops and paints immediately.
+        const cur = usePlayerStore.getState().sectionIdx
+        await Promise.race([
+          usePlayerStore.getState().ensureTimingsBatch([cur - 1, cur, cur + 1]),
+          new Promise((resolve) => setTimeout(resolve, 750)),
+        ])
+        if (dead) return
+        setDoc(d)
+        setManifest(usePlayerStore.getState().manifest ?? man) // paint #1
         if (p?.active) usePlayerStore.getState().play()
         // Nothing spoken yet and the queue idle → start TTS now. Bias: the
         // section in view, unless it's huge (a 700-chunk front matter is
@@ -79,10 +96,10 @@ export default function ReaderView() {
         const inflight = ["ready", "synthesizing", "aligning", "encoding"]
         const pending = man.sections.filter((s) => s.status === "pending")
         if (!man.sections.some((s) => inflight.includes(s.status)) && pending.length) {
-          const cur = man.sections[usePlayerStore.getState().sectionIdx]
+          const curSec = man.sections[usePlayerStore.getState().sectionIdx]
           const boost =
-            cur && cur.status === "pending" && (cur.chunks?.length ?? 0) <= 400
-              ? cur.idx
+            curSec && curSec.status === "pending" && (curSec.chunks?.length ?? 0) <= 400
+              ? curSec.idx
               : pending.slice().sort((a, b) => a.chunks.length - b.chunks.length)[0].idx
           void requestGeneration(bookId, boost)
         }
@@ -100,20 +117,18 @@ export default function ReaderView() {
   const sectionIdx = store.sectionIdx
   useEffect(() => {
     if (!manifest) return
-    for (const i of [sectionIdx - 1, sectionIdx, sectionIdx + 1]) {
-      const s = manifest.sections.find((x) => x.idx === i)
-      if (s && s.status === "ready" && !(s.chunks?.[0]?.words?.length))
-        void usePlayerStore.getState().ensureTimings(i).then((merged) => {
-          // mirror into local state so TextPane re-renders words with data-s
-          if (merged) setManifest((cur) => (cur === manifest ? merged : cur))
-        })
-    }
+    void usePlayerStore
+      .getState()
+      .ensureTimingsBatch([sectionIdx - 1, sectionIdx, sectionIdx + 1])
+      .then((merged) => {
+        // Mirror into local state so TextPane re-renders words with data-s.
+        // Checked at RESOLUTION time: if the store moved on (an SSE reload
+        // landed a newer manifest), that path mirrors itself and this one
+        // must not overwrite it.
+        if (merged && usePlayerStore.getState().manifest === merged)
+          setManifest(merged)
+      })
   }, [manifest, sectionIdx])
-
-  // user highlights for this book
-  useEffect(() => {
-    void useHighlightStore.getState().refresh(bookId)
-  }, [bookId])
 
   // Chapter jumps: the pane owns layout navigation (scroll or page flip) —
   // see TextPane's jump watcher.

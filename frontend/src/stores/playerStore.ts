@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import type {
   BookDocument,
   Manifest,
+  ManifestSection,
   Progress,
 } from '../types'
 import {
@@ -42,9 +43,11 @@ export interface PlayerState {
   setManifest: (manifest: Manifest) => void
   noteChunk: (sec: number, chunk: number) => void
   clearChunkDone: (sec: number) => void
-  /** merge full word timings for one section (fetched lazily);
-   *  resolves to the merged manifest so callers can mirror it in local state */
-  ensureTimings: (idx: number) => Promise<Manifest | null>
+  /** fetch word timings for the given sections in parallel and merge them
+   *  into ONE manifest update; serialized so back-to-back batches can't drop
+   *  each other's merges. Resolves to the merged manifest, or null when
+   *  nothing needed fetching / every fetch failed. */
+  ensureTimingsBatch: (idxs: number[]) => Promise<Manifest | null>
   setPercent: (percent: number) => void
 
   play: () => void
@@ -62,6 +65,10 @@ export interface PlayerState {
   /** snapshot for progress persistence */
   currentProgress: () => Progress | null
 }
+
+// Batches run one at a time so a later batch always builds on the earlier
+// batch's merge instead of silently reverting it.
+let timingsChain: Promise<unknown> = Promise.resolve()
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   bookId: null,
@@ -114,24 +121,41 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (resume) void engine.seekToGlobalMs(startMs) // parks <audio> at the same spot
   },
 
-  async ensureTimings(idx) {
-    const { manifest, bookId } = get()
-    const sec = manifest?.sections.find((s) => s.idx === idx)
-    if (!manifest || !bookId || !sec) return null
-    if (sec.status !== 'ready' || sec.chunks?.some((c) => c.words?.length)) return null
-    try {
-      const full = await getSectionTimings(bookId, idx)
+  async ensureTimingsBatch(idxs) {
+    const run = async (): Promise<Manifest | null> => {
+      const { manifest, bookId } = get()
+      if (!manifest || !bookId) return null
+      const need = idxs.filter((i) => {
+        const s = manifest.sections.find((x) => x.idx === i)
+        return s && s.status === 'ready' && !s.chunks?.some((c) => c.words?.length)
+      })
+      if (!need.length) return null
+      const settled = await Promise.allSettled(
+        need.map((i) =>
+          getSectionTimings(bookId, i).then((full) => [i, full] as const),
+        ),
+      )
+      const got = new Map(
+        settled
+          .filter((r): r is PromiseFulfilledResult<readonly [number, ManifestSection]> => r.status === 'fulfilled')
+          .map((r) => r.value),
+      )
+      if (!got.size) return null
+      const cur = get().manifest! // earlier chain links may have merged
       const merged: Manifest = {
-        ...manifest,
-        sections: manifest.sections.map((s) => (s.idx === idx ? full : s)),
+        ...cur,
+        sections: cur.sections.map((s) => got.get(s.idx) ?? s),
       }
       set({ manifest: merged, manifestVersion: get().manifestVersion + 1 })
       engine.setManifest(merged)
       return merged
-    } catch {
-      /* section went pending again / server busy — highlighter stays off */
-      return null
     }
+    const p = timingsChain.then(run, run)
+    timingsChain = p.then(
+      () => undefined,
+      () => undefined,
+    )
+    return p
   },
 
   noteChunk(sec, chunk) {
