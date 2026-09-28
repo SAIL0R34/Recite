@@ -130,6 +130,7 @@ export default function TextPane({
   const secBoundsRef = useRef<SectionPageBound[]>([])
   const pendingAnchorRef = useRef<PageAnchor | null>(null)
   const swipeRef = useRef<{ x: number; y: number } | null>(null)
+  const restoredRef = useRef(false)
 
   const geom = (): PageGeom => ({ pageW: pageWRef.current, gap: PAGE_GAP })
 
@@ -166,6 +167,20 @@ export default function TextPane({
     secBoundsRef.current = bounds
     const count = pageCountFor(strip, geom())
     setPageCount(count)
+    // first successful measure of a mount: open on the resume page, not
+    // page 0 — pre-paint, so there is no post-open flip (once per mount;
+    // window slides restore pages via the pendingAnchor path below)
+    if (!restoredRef.current) {
+      restoredRef.current = true
+      const st = usePlayerStore.getState()
+      const el =
+        findActiveWord(wordsRef.current, st.globalMs) ??
+        (cols.querySelector(`[data-section="${st.sectionIdx}"]`) as HTMLElement | null)
+      if (el) {
+        setPage(clampPage(pageOfEl(el), count))
+        return
+      }
+    }
     // a window slide renumbered the pages — land back on the anchor
     const a = pendingAnchorRef.current
     if (a) {
@@ -334,7 +349,9 @@ export default function TextPane({
   // ---- paged geometry: derive page width, then re-measure every render ---
   // (renders are the only way the column DOM changes: window slides, SSE
   // chunk updates, CAP expansion — so a per-render pass covers them all)
-  useEffect(() => {
+  // LAYOUT effect: the width re-render lands before the browser paints, so
+  // the first paged frame is never a full-width uncolumned flash.
+  useLayoutEffect(() => {
     const el = containerRef.current
     if (!paged || !el) return
     const compute = () => {
