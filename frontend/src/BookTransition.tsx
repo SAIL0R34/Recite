@@ -138,18 +138,15 @@ function Flight({ p, onDone }: { p: FlightPayload; onDone: () => void }) {
           <>
             {/* first page revealed as the cover opens (bottom layer) */}
             <div className="book-flight-underside" />
-            {/* the LEFT half of the cover, static across the spine */}
-            <div className="book-flight-left">
-              <CoverVisual p={p} imgOk onImgError={() => setImgOk(false)} />
-            </div>
-            {/* the right half of the cover, hinging on the spine */}
-            <div className={flapOpen ? 'book-flight-flap is-open' : 'book-flight-flap'}>
-              <img
-                src={coverUrl(p.bookId)}
-                alt=""
-                className="book-flight-flap-img"
-              />
-            </div>
+            {/* cover halves as background images — no nested-offset img trick */}
+            <div
+              className="book-flight-left"
+              style={{ backgroundImage: `url("${coverUrl(p.bookId)}")` }}
+            />
+            <div
+              className={flapOpen ? 'book-flight-flap is-open' : 'book-flight-flap'}
+              style={{ backgroundImage: `url("${coverUrl(p.bookId)}")` }}
+            />
             {/* title rides the cover, dissolving as the book opens */}
             <div className={flapOpen ? 'book-flight-title is-hidden' : 'book-flight-title'}>
               <span className="book-flight-title-name line-clamp-2">{p.title}</span>
@@ -161,6 +158,15 @@ function Flight({ p, onDone }: { p: FlightPayload; onDone: () => void }) {
         ) : (
           /* coverless book: the typographic card flies whole, title centered */
           <CoverVisual p={p} imgOk={false} onImgError={() => setImgOk(false)} />
+        )}
+        {/* hidden probe: flips to the typographic card if the cover 404s */}
+        {hasImg && (
+          <img
+            src={coverUrl(p.bookId)}
+            alt=""
+            style={{ display: 'none' }}
+            onError={() => setImgOk(false)}
+          />
         )}
         {/* spine shading down the left edge — reads as a bound book */}
         <div className="book-flight-spine" />
