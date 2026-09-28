@@ -3,6 +3,11 @@ import type { BookDocument, Manifest } from '../types'
 import { usePlayerStore } from '../stores/playerStore'
 import type { Timeline } from '../player/timeline'
 import { buildSearchIndex, searchIndex, snippet } from './search'
+import type { SearchDoc } from './search'
+
+// Building the index walks every sentence of the book — never do that in
+// the book-open render; the first `/` pays for it instead (user-initiated).
+const EMPTY: SearchDoc[] = []
 
 /**
  * In-book search ( / ). Matches list with context snippets; clicking a hit
@@ -28,7 +33,7 @@ export default function SearchPopover({
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const index = useMemo(() => buildSearchIndex(doc), [doc])
+  const index = useMemo(() => (open ? buildSearchIndex(doc) : EMPTY), [open, doc])
   const hits = useMemo(() => searchIndex(index, debounced), [index, debounced])
 
   useEffect(() => {

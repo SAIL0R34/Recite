@@ -360,13 +360,19 @@ input[type='range'].speed {
 .kar-mark-rose  { background: rgba(236, 116, 140, 0.30); }
 
 /* run shaping: square the sides that continue into the same mark, so a
-   multi-word mark reads as one stroke with rounded outer ends only */
+   multi-word mark reads as one stroke with rounded outer ends only.
+   Joined edges also drop their horizontal padding: adjacent border boxes
+   then abut exactly at the last glyph, the space-inside-span keeps the
+   stroke continuous, and a mark's total inline advance stops growing per
+   word (vertical padding is layout-free on inlines). */
 .kar-mark-join-l {
+  padding-left: 0;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
 }
 
 .kar-mark-join-r {
+  padding-right: 0;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }

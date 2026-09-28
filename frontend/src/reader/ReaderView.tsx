@@ -37,8 +37,14 @@ export default function ReaderView() {
   const [modelLoading, setModelLoading] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
 
-  const store = usePlayerStore()
-  const timeline = store.timeline
+  // Selectors (not the whole store): globalMs ticks fire ~60×/s while
+  // playing and none of them need to re-render this view — the memoized
+  // TextPane subtree especially. percent is quantized to 0.1 downstream,
+  // so the ring re-renders rarely.
+  const timeline = usePlayerStore((s) => s.timeline)
+  const sectionIdx = usePlayerStore((s) => s.sectionIdx)
+  const playing = usePlayerStore((s) => s.playing)
+  const percent = usePlayerStore((s) => s.percent)
 
   // ---- load -----------------------------------------------------------
   // One POSITIONED paint. The old stub-then-slim double paint is long gone;
@@ -114,7 +120,6 @@ export default function ReaderView() {
 
   // Ready sections render without word data (slim manifest); fetch timings
   // for the visible trio so highlighting works. Cheap: one section ~50 KB.
-  const sectionIdx = store.sectionIdx
   useEffect(() => {
     if (!manifest) return
     void usePlayerStore
@@ -137,10 +142,10 @@ export default function ReaderView() {
   // idempotent and cheap for fully-ready books.
   useEffect(() => {
     const t = setTimeout(() => {
-      void requestGeneration(bookId, store.sectionIdx).catch(() => undefined)
+      void requestGeneration(bookId, sectionIdx).catch(() => undefined)
     }, 2500)
     return () => clearTimeout(t)
-  }, [store.sectionIdx])
+  }, [sectionIdx])
 
   // ---- SSE + polling fallback -------------------------------------------
   useEffect(() => {
@@ -376,7 +381,6 @@ export default function ReaderView() {
     return () => window.removeEventListener('keydown', onKey)
   }, [bookId])
 
-  const percent = store.percent
   const readyCount = useMemo(
     () => (manifest?.sections ?? []).filter((s) => s.status === 'ready').length,
     [manifest],
@@ -419,11 +423,11 @@ export default function ReaderView() {
           </p>
         </div>
         <button
-          className="btn btn-accent"
+          className="btn btn-accent min-w-28 justify-center"
           onClick={() => usePlayerStore.getState().toggle()}
           title="Continue (space)"
         >
-          {store.playing ? '⏸ Pause' : '▶ Continue'}
+          {playing ? '⏸ Pause' : '▶ Continue'}
         </button>
         <PercentRing percent={percent} />
         {timeline && <ChapterMenu timeline={timeline} />}

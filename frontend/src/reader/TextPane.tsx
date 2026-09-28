@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
   BookDocument,
   DocParagraph,
@@ -87,7 +87,11 @@ interface Menu {
  * delegation); marks persist via useHighlightStore and render back as
  * kar-mark spans keyed by (section, para, token index).
  */
-export default function TextPane({
+// Memoized: doc/manifest/timeline keep their identity across globalMs ticks,
+// so the per-frame player updates never re-render this (large) subtree.
+// FUTURE: any unstable prop (inline object/array) passed here silently
+// defeats the memo — pass stable references only.
+function TextPane({
   doc,
   manifest,
   timeline,
@@ -367,8 +371,17 @@ export default function TextPane({
   useLayoutEffect(() => {
     if (!paged) return
     remeasure()
-    document.fonts?.ready?.then(() => remeasure()).catch(() => undefined)
   })
+
+  // webfonts land once, not per render — re-page when they do (no-op when
+  // paged mode is off by then; the per-render pass covers mode switches)
+  useEffect(() => {
+    document.fonts?.ready
+      ?.then(() => {
+        if (pagedRef.current) remeasure()
+      })
+      .catch(() => undefined)
+  }, [])
 
   // chapter jumps (jumpToSection nonce) and search reveals arrive as store
   // state / window events — the pane owns all layout navigation
@@ -652,6 +665,8 @@ export default function TextPane({
     </div>
   )
 }
+
+export default memo(TextPane)
 
 // ---------------------------------------------------------------------------
 
