@@ -43,8 +43,8 @@ export interface ShelfSection {
  * visibly migrate off it as the 4s poll reports them done.
  */
 export function sectionBooks(books: BookSummary[]): ShelfSection[] {
-  const byUpdated = (a: BookSummary, b: BookSummary) =>
-    b.updated_at.localeCompare(a.updated_at)
+  // created_at/updated_at are epoch seconds (numbers) despite the old type
+  const byUpdated = (a: BookSummary, b: BookSummary) => b.updated_at - a.updated_at
   const reading = books
     .filter((b) => (b.percent ?? 0) > 0)
     .sort((a, b) => (b.last_read ?? 0) - (a.last_read ?? 0))

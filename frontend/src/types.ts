@@ -10,8 +10,10 @@ export interface BookSummary {
   total_words: number
   percent: number
   path: string
-  created_at: string
-  updated_at: string
+  /** epoch seconds */
+  created_at: number
+  /** epoch seconds */
+  updated_at: number
   /** epoch seconds of the last reading session; null when never opened */
   last_read?: number | null
   /** narration progress; null before the manifest exists */
