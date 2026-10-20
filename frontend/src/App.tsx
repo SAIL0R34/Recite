@@ -42,13 +42,16 @@ function AppShell() {
     <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       <header
         className="flex items-center justify-between border-b px-5 py-2.5"
-        style={{ borderColor: 'var(--border)' }}
+        style={{ borderColor: 'var(--hairline)' }}
       >
-        <a href="/" className="flex items-baseline gap-2">
-          <span className="text-lg font-semibold tracking-tight">Recite</span>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>
-            listen &amp; read along
+        <a href="/" className="flex items-baseline gap-2.5">
+          <span
+            className="text-[22px] font-medium tracking-tight"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Recite
           </span>
+          <span className="kicker hidden sm:inline">listen &amp; read along</span>
         </a>
         <div className="flex items-center gap-2">
           {!onReader && (

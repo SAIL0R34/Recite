@@ -19,6 +19,15 @@ html[data-theme='light'] {
   --ring: rgba(180, 83, 9, 0.15);
   --danger: #b3261e;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.08);
+  /* paper & shelf */
+  --hairline: #ece8e1;
+  --paper-raised: #f4f1ea;
+  --ink: #141210;
+  --wood-hi: #e8d9bd;
+  --wood-mid: #d9c39c;
+  --wood-lo: #c4a878;
+  --wood-lip: #b39668;
+  --book-body: #3d3d3b;
 }
 
 html[data-theme='sepia'] {
@@ -35,6 +44,15 @@ html[data-theme='sepia'] {
   --ring: rgba(154, 91, 31, 0.15);
   --danger: #b3261e;
   --shadow: 0 1px 2px rgba(60, 40, 10, 0.08), 0 8px 24px rgba(60, 40, 10, 0.12);
+  /* paper & shelf — maple */
+  --hairline: #e3d6ba;
+  --paper-raised: #f7f0df;
+  --ink: #1f180e;
+  --wood-hi: #dec394;
+  --wood-mid: #c9a468;
+  --wood-lo: #a87f47;
+  --wood-lip: #93703f;
+  --book-body: #3d3d3b;
 }
 
 html[data-theme='dark'] {
@@ -51,6 +69,33 @@ html[data-theme='dark'] {
   --ring: rgba(245, 158, 11, 0.2);
   --danger: #f87171;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+  /* paper & shelf — walnut */
+  --hairline: #2e2820;
+  --paper-raised: #26211a;
+  --ink: #f2ede4;
+  --wood-hi: #4a3826;
+  --wood-mid: #382a1c;
+  --wood-lo: #241a10;
+  --wood-lip: #1c140c;
+  --book-body: #4a443c;
+}
+
+/* theme-independent */
+:root {
+  --font-display: 'Newsreader Variable', Georgia, 'Times New Roman', serif;
+  --ease-spring: cubic-bezier(0.34, 1.35, 0.44, 1);
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* paper grain — feTurbulence noise tile (multiply-blended at low opacity) */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+/* letterspaced uppercase editorial label */
+.kicker {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 /* ---- base ------------------------------------------------------------- */

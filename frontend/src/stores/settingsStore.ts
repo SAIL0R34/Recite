@@ -33,6 +33,13 @@ function applyTheme(s: Settings | null): void {
   const el = document.documentElement
   el.dataset.theme = s.theme
   el.classList.toggle('dark', s.theme === 'dark')
+  // Decorative motion gate (shelf idle/present choreography, confetti):
+  // CSS scopes those keyframes to [data-anim='on']. Mirrors animOK().
+  el.dataset.anim =
+    s.pageAnimations === true &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'on'
+      : 'off'
   el.style.setProperty('--reader-font-size', `${s.fontSize}px`)
   el.style.setProperty('--reader-line-height', String(s.lineHeight))
   if (s.fontFamily) el.style.setProperty('--reader-font', s.fontFamily)

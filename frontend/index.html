@@ -14,6 +14,14 @@
           document.documentElement.dataset.theme = s.theme
           document.documentElement.classList.toggle('dark', s.theme === 'dark')
         }
+        if (s) {
+          // decorative-motion gate (mirrors applyTheme)
+          document.documentElement.dataset.anim =
+            s.pageAnimations === true &&
+            !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+              ? 'on'
+              : 'off'
+        }
         if (s && s.fontSize)
           document.documentElement.style.setProperty('--reader-font-size', s.fontSize + 'px')
         if (s && s.lineHeight)
