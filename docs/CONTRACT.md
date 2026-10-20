@@ -56,6 +56,8 @@ sample-library/sample.epub     # copy of the bundled sample book (POST /sample)
 | `/api/books/{id}/audio/section-NNN.mp3` | GET | FileResponse → Range/206 free |
 | `/api/books/{id}/progress` | GET/PUT | `POST …/progress/beacon` for sendBeacon |
 | `/api/books/{id}/bookmarks` | GET/POST, `PATCH/DELETE …/{bid}` | PATCH `{name}` renames in place (keeps created_at order) |
+| `/api/sessions` | POST | `{book_id, started_at, ended_at, duration_s}` (epoch s) — beacon-written reading sitting; durations clamped to 0..12h, sub-second sittings ignored |
+| `/api/stats` | GET | `?days=14` (1..90): `{total_s, sessions, books_read, streak_days, daily[{date,seconds}], per_book[{book_id,title,author,format,percent,sec,n}], by_format, by_state}` |
 | `/api/settings` | GET/PUT | voice, theme, fontSize, lineHeight, fontFamily, highlightStyle, alignment, readingMode (scroll/paged), pageAnimations |
 | `/api/books/{id}/events` | GET SSE | `section {idx,status}`, `chunk {idx,chunk}`, `generation {done}`, `model {state:downloading|ready}` (once per cold cache) |
 | `/api/books/{id}/generate` | POST | `?boost=N&window=CHUNKS`: queue the audio window around section N — lane 1 = N+successor, lane 2 = forward until chunk budget; out-of-window queued work goes cold for `RECITE_TTS_GRACE` s, then releases (stays `pending`, nothing lost). `boost` also force-requeues a `failed` section |

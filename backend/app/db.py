@@ -59,8 +59,17 @@ CREATE TABLE IF NOT EXISTS settings(
   key TEXT PRIMARY KEY,
   value TEXT
 );
+CREATE TABLE IF NOT EXISTS sessions(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  started_at REAL NOT NULL,
+  ended_at REAL NOT NULL,
+  duration_s REAL NOT NULL
+);
 CREATE INDEX IF NOT EXISTS bookmarks_book ON bookmarks(book_id);
 CREATE INDEX IF NOT EXISTS highlights_book ON highlights(book_id);
+CREATE INDEX IF NOT EXISTS sessions_book ON sessions(book_id);
+CREATE INDEX IF NOT EXISTS sessions_time ON sessions(ended_at);
 """
 
 #: columns added after the first release (ALTER, not CREATE) — idempotent
@@ -148,6 +157,7 @@ class Database:
             self._conn.execute("DELETE FROM books WHERE id=?", (book_id,))
             self._conn.execute("DELETE FROM progress WHERE book_id=?", (book_id,))
             self._conn.execute("DELETE FROM bookmarks WHERE book_id=?", (book_id,))
+            self._conn.execute("DELETE FROM sessions WHERE book_id=?", (book_id,))
             self._conn.commit()
 
     # ------------------------------------------------------- progress
@@ -231,6 +241,83 @@ class Database:
         with self._lock:
             self._conn.execute("DELETE FROM highlights WHERE id=?", (highlight_id,))
             self._conn.commit()
+
+    # ------------------------------------------------------ sessions
+    def add_session(self, book_id: str, started_at: float, ended_at: float,
+                    duration_s: float) -> Optional[dict]:
+        """Record one reading sitting. Junk is clamped, not rejected — the
+        writer is a navigator.sendBeacon with no retry path."""
+        row = self.get_book(book_id)
+        if row is None:
+            return None
+        duration_s = max(0.0, min(duration_s, 12 * 3600.0))
+        if duration_s < 1.0:
+            return None
+        ended_at = min(ended_at, time.time())
+        started_at = min(started_at, ended_at)
+        rec = {"id": uuid.uuid4().hex[:10], "book_id": book_id,
+               "started_at": started_at, "ended_at": ended_at,
+               "duration_s": duration_s}
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO sessions(id,book_id,started_at,ended_at,duration_s)"
+                " VALUES(?,?,?,?,?)",
+                (rec["id"], book_id, started_at, ended_at, duration_s))
+            self._conn.commit()
+        return rec
+
+    def stats(self, days: int = 14) -> dict:
+        """Aggregates for the statistics page: totals, a daily series for the
+        last `days` days, per-book time, and time split by format/state."""
+        now = time.time()
+        since = now - days * 86400
+        with self._lock:
+            total = self._conn.execute(
+                "SELECT COUNT(*) n, COALESCE(SUM(duration_s),0) s"
+                " FROM sessions").fetchone()
+            daily_rows = self._conn.execute(
+                "SELECT date(ended_at,'unixepoch','localtime') d,"
+                " SUM(duration_s) s FROM sessions WHERE ended_at >= ?"
+                " GROUP BY d ORDER BY d", (since,)).fetchall()
+            per_book = self._conn.execute(
+                "SELECT s.book_id, b.title, b.author, b.format,"
+                " COALESCE(p.percent,0) percent, SUM(s.duration_s) sec,"
+                " COUNT(*) n"
+                " FROM sessions s JOIN books b ON b.id=s.book_id"
+                " LEFT JOIN progress p ON p.book_id=s.book_id"
+                " GROUP BY s.book_id ORDER BY sec DESC").fetchall()
+            by_format = self._conn.execute(
+                "SELECT b.format f, SUM(s.duration_s) sec FROM sessions s"
+                " JOIN books b ON b.id=s.book_id GROUP BY b.format"
+                " ORDER BY sec DESC").fetchall()
+        daily_map = {r["d"]: r["s"] for r in daily_rows}
+        daily = []
+        for i in range(days - 1, -1, -1):
+            d = time.strftime("%Y-%m-%d", time.localtime(now - i * 86400))
+            daily.append({"date": d, "seconds": daily_map.get(d, 0.0)})
+        # streak: consecutive days with any reading, ending today or yesterday
+        day_set = set(daily_map)
+        streak = 0
+        cursor = now
+        if time.strftime("%Y-%m-%d", time.localtime(cursor)) not in day_set:
+            cursor -= 86400  # today unread doesn't break a streak begun yesterday
+        while time.strftime("%Y-%m-%d", time.localtime(cursor)) in day_set:
+            streak += 1
+            cursor -= 86400
+        by_state = {"reading": 0.0, "finished": 0.0, "unread": 0.0}
+        for r in per_book:
+            pct = r["percent"] or 0
+            by_state["finished" if pct >= 100 else "reading" if pct > 0
+                     else "unread"] += r["sec"]
+        return {
+            "total_s": total["s"], "sessions": total["n"],
+            "books_read": len(per_book), "streak_days": streak,
+            "daily": daily,
+            "per_book": [dict(r) for r in per_book],
+            "by_format": [{"format": r["f"], "seconds": r["sec"]}
+                          for r in by_format],
+            "by_state": [{"state": k, "seconds": v} for k, v in by_state.items()],
+        }
 
     # ------------------------------------------------------ settings
     def get_settings(self) -> dict:

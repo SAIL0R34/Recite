@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, events
-from .api import books, bookmarks, events_api, highlights, progress, settings_api
+from .api import books, bookmarks, events_api, highlights, progress, sessions, settings_api
 from .db import db
 
 app = FastAPI(title="recite")
@@ -18,7 +18,7 @@ app = FastAPI(title="recite")
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 for r in (books.router, progress.router, bookmarks.router, highlights.router,
-          settings_api.router, events_api.router):
+          sessions.router, settings_api.router, events_api.router):
     app.include_router(r)
 
 
