@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { BookSummary } from '../types'
 import { coverUrl } from '../api/client'
-import { floatDelay, spineTint } from './shelf'
+import { floatDelay, spineScale, spineTint } from './shelf'
 
 interface ShelfBookProps {
   book: BookSummary
@@ -16,10 +16,12 @@ interface ShelfBookProps {
 }
 
 /**
- * A book standing on a shelf: a pure-CSS 3D box (front cover + spine +
- * page-block top). First click presents it (pull-out + paper band); second
- * click opens it — the front face is the flight origin (found via
- * [data-book-id] .book-front, so no ref plumbing through the tree).
+ * A book on the shelf, Grokipedia-style: at rest it is a NARROW SPINE
+ * (title running vertically, hashed cloth tint, paper foot band); the front
+ * cover lives on the same 3D box, turned away. Presenting rotates the book
+ * open and widens its slot — neighbors part to make room — until the full
+ * cover faces you wearing its paper band. Second click reads: the flat
+ * cover face is the flight origin (found via [data-book-id] .book-cover).
  */
 export default function ShelfBook({
   book,
@@ -36,6 +38,7 @@ export default function ShelfBook({
   const scene = {
     '--tint': spineTint(book.title),
     '--float-delay': floatDelay(book.title),
+    '--spine-scale': spineScale(book.title),
   } as CSSProperties
 
   return (
@@ -61,7 +64,15 @@ export default function ShelfBook({
     >
       <span className="book-bob" aria-hidden="true">
         <span className="book">
-          <span className="book-face book-front">
+          {/* the spine the world sees at rest */}
+          <span className="book-face book-spine">
+            <span className="book-spine-title">{book.title}</span>
+            <span className="book-spine-band" />
+          </span>
+          {/* page-block top edge; warm gilt wash while narration generates */}
+          <span className="book-face book-top" />
+          {/* the full cover, swung open on presentation */}
+          <span className="book-face book-cover">
             {imgOk ? (
               <img
                 className="book-img"
@@ -85,14 +96,17 @@ export default function ShelfBook({
                 style={{ height: `clamp(8%, ${pct}%, 88%)` }}
               />
             )}
-            {presented && <span className="book-band" />}
+            {presented && (
+              <span className="book-band">
+                <span className="book-band-kicker">From the shelf</span>
+                <span className="book-band-title">{book.title}</span>
+                <span className="book-band-author">
+                  {book.author || 'Unknown'}
+                </span>
+              </span>
+            )}
             <span className="book-sheen" />
           </span>
-          <span className="book-face book-spine">
-            <span className="book-spine-title">{book.title}</span>
-            <span className="book-spine-band" />
-          </span>
-          <span className="book-face book-top" />
         </span>
       </span>
       <span className="book-shadow" aria-hidden="true" />

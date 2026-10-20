@@ -17,6 +17,7 @@ import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useHighlightStore } from '../stores/highlightStore'
 import { engine } from '../player/engine'
+import { beginReadingSession, endReadingSession } from '../readingSession'
 import TextPane from './TextPane'
 import TransportBar from './TransportBar'
 import SearchPopover from './SearchPopover'
@@ -94,6 +95,7 @@ export default function ReaderView() {
         if (dead) return
         setDoc(d)
         setManifest(usePlayerStore.getState().manifest ?? man) // paint #1
+        beginReadingSession(bookId, d.title)
         if (p?.active) usePlayerStore.getState().play()
         // Nothing spoken yet and the queue idle → start TTS now. Bias: the
         // section in view, unless it's huge (a 700-chunk front matter is
@@ -117,6 +119,18 @@ export default function ReaderView() {
       dead = true
     }
   }, [bookId])
+
+  // ---- reading session (close celebration + statistics) -------------------
+  // The sitting ends on unmount and on pagehide; endReadingSession is
+  // idempotent, so both paths can fire.
+  useEffect(() => {
+    const leave = () => endReadingSession()
+    window.addEventListener('pagehide', leave)
+    return () => {
+      window.removeEventListener('pagehide', leave)
+      leave()
+    }
+  }, [])
 
   // Ready sections render without word data (slim manifest); fetch timings
   // for the visible trio so highlighting works. Cheap: one section ~50 KB.

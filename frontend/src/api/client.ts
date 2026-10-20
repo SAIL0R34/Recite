@@ -158,6 +158,55 @@ export const sendProgressBeacon = (id: string, p: Progress): boolean => {
   }
 }
 
+/** Reading sitting, beaconed when the reader unmounts / the tab hides. */
+export const sendSessionBeacon = (s: {
+  bookId: string
+  startedMs: number
+  ms: number
+}): boolean => {
+  try {
+    return navigator.sendBeacon(
+      '/api/sessions/beacon',
+      new Blob(
+        [
+          JSON.stringify({
+            book_id: s.bookId,
+            started_at: s.startedMs / 1000,
+            ended_at: (s.startedMs + s.ms) / 1000,
+            duration_s: s.ms / 1000,
+          }),
+        ],
+        { type: 'text/plain' },
+      ),
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Aggregates for the statistics page. */
+export interface Stats {
+  total_s: number
+  sessions: number
+  books_read: number
+  streak_days: number
+  daily: { date: string; seconds: number }[]
+  per_book: {
+    book_id: string
+    title: string
+    author: string
+    format: string
+    percent: number
+    sec: number
+    n: number
+  }[]
+  by_format: { format: string; seconds: number }[]
+  by_state: { state: string; seconds: number }[]
+}
+
+export const getStats = (days = 14): Promise<Stats> =>
+  request(`/api/stats?days=${days}`)
+
 // ---- bookmarks ----
 
 export const listBookmarks = (id: string): Promise<Bookmark[]> =>

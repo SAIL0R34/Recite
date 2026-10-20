@@ -7,9 +7,12 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useFlightStore } from '../stores/flightStore'
 import { startBookFlight } from '../motion'
 import { praise } from '../PraiseConfetti'
+import { takeEndedSession } from '../readingSession'
+import type { EndedSession } from '../readingSession'
 import { sectionBooks } from './shelf'
 import Bookcase from './Bookcase'
 import ShelfLabel from './ShelfLabel'
+import SessionPraise from './SessionPraise'
 import AddBookDialog from './AddBookDialog'
 
 export default function LibraryView() {
@@ -26,10 +29,14 @@ export default function LibraryView() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [launchingId, setLaunchingId] = useState<string | null>(null)
   const [perRow, setPerRow] = useState(8)
+  const [celebrate, setCelebrate] = useState<EndedSession | null>(null)
   const caseRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void useLibraryStore.getState().refresh()
+    // a sitting that just ended gets its close celebration
+    const s = takeEndedSession()
+    if (s) setCelebrate(s)
   }, [])
 
   // While any book is still generating narration, refresh the list so it
@@ -60,9 +67,9 @@ export default function LibraryView() {
     caseRef.current?.querySelector<HTMLButtonElement>(
       `[data-book-id="${CSS.escape(id)}"]`,
     )
-  const frontEl = (id: string) =>
+  const coverEl = (id: string) =>
     caseRef.current?.querySelector(
-      `[data-book-id="${CSS.escape(id)}"] .book-front`,
+      `[data-book-id="${CSS.escape(id)}"] .book-cover`,
     )
 
   const select = useCallback((id: string) => {
@@ -75,33 +82,50 @@ export default function LibraryView() {
   const clear = useCallback(() => setSelectedId(null), [])
 
   /**
-   * Open a book to read. When given an element (hero thumb) it flies from
-   * there; when null (stage Read button) it flies from the presented book's
-   * front face — snapping the 3D pose flat for one frame so the flight
-   * measures an honest rect. The overlay's clone hides the snap.
+   * Open a book to read. A presented book snaps its 3D pose flat for one
+   * frame (the overlay's clone hides it) and flies from its cover; the hero
+   * Continue pulls the book off the shelf first, then flies mid-swing,
+   * 480ms later. Without animations we just navigate.
    */
   const open = useCallback(
-    (book: BookSummary, el: Element | null) => {
+    (book: BookSummary) => {
       const go = () => navigate(`/book/${encodeURIComponent(book.id)}`)
-      const front = el ?? (selectedId === book.id ? frontEl(book.id) : null)
       if (!animOn) {
         go()
         return
       }
-      const launch = () => {
-        const src = front ?? frontEl(book.id) ?? null
-        praise(src) // confetti as the book lifts off to be read
-        if (!startBookFlight(src, book)) go()
-        setLaunchingId(null)
-      }
-      if (!el && selectedId === book.id) {
+      const launchFromShelf = () => {
         setLaunchingId(book.id)
-        requestAnimationFrame(launch)
-      } else {
-        launch()
+        requestAnimationFrame(() => {
+          const src = coverEl(book.id) ?? null
+          praise(src) // confetti as the book lifts off to be read
+          if (!startBookFlight(src, book)) go()
+          setLaunchingId(null)
+        })
+      }
+      if (selectedId === book.id) launchFromShelf()
+      else {
+        setSelectedId(book.id) // present-then-fly (hero Continue)
+        setTimeout(launchFromShelf, 480)
       }
     },
     [animOn, navigate, selectedId],
+  )
+
+  /** browse from the stage arrows — same path as the arrow keys */
+  const navigateShelf = useCallback(
+    (delta: number) => {
+      if (flat.length === 0) return
+      const i = selectedId ? flat.findIndex((b) => b.id === selectedId) : -1
+      const next =
+        i < 0
+          ? delta > 0
+            ? 0
+            : flat.length - 1
+          : (i + delta + flat.length) % flat.length
+      select(flat[next].id)
+    },
+    [flat, selectedId, select],
   )
 
   const onKeydown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -210,7 +234,7 @@ export default function LibraryView() {
             onSelect={select}
             onOpen={(id) => {
               const book = books.find((b) => b.id === id)
-              if (book) open(book, null)
+              if (book) open(book)
             }}
             onPerRow={setPerRow}
           />
@@ -243,8 +267,12 @@ export default function LibraryView() {
         hero={hero}
         presented={presented}
         onOpen={open}
+        onNavigate={navigateShelf}
         onClear={clear}
       />
+      {celebrate && (
+        <SessionPraise session={celebrate} onDone={() => setCelebrate(null)} />
+      )}
       {dialogOpen && <AddBookDialog />}
     </div>
   )

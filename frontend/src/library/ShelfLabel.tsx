@@ -1,60 +1,40 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { BookSummary } from '../types'
 import { useLibraryStore } from '../stores/libraryStore'
-import { coverUrl, rechunkBook } from '../api/client'
+import { rechunkBook } from '../api/client'
 
 interface ShelfLabelProps {
   hero?: BookSummary
   presented?: BookSummary
-  /** el is the flight origin when the caller has one (hero thumb); the
-   *  presented book's shelf face is resolved by the caller when null */
-  onOpen: (book: BookSummary, el: Element | null) => void
+  /** open to read — the caller resolves the flight origin (present-then-fly
+   *  for the hero, the presented cover for Read) */
+  onOpen: (book: BookSummary) => void
+  /** browse the shelf from the stage's arrows */
+  onNavigate: (delta: number) => void
   onClear: () => void
 }
 
-/** Small cover thumb with the same 404 → typographic treatment. */
-function Thumb({ book }: { book: BookSummary }) {
-  const [ok, setOk] = useState(true)
-  return ok ? (
-    <img
-      src={coverUrl(book.id)}
-      alt=""
-      loading="lazy"
-      onError={() => setOk(false)}
-      className="h-[72px] w-12 rounded-md object-cover"
-      style={{ boxShadow: 'var(--shadow)' }}
-    />
-  ) : (
-    <div
-      className="flex h-[72px] w-12 items-center justify-center rounded-md p-1 text-center"
-      style={{ background: 'var(--surface-2)' }}
-    >
-      <span className="line-clamp-3 text-[9px] font-semibold leading-tight">
-        {book.title}
-      </span>
-    </div>
-  )
-}
-
 /**
- * The paper stage pinned to the bottom of the library: the continue-reading
- * hero when idle, the presented book's details + actions when a book is
- * pulled off the shelf. Keyed remount of the copy block re-runs band-rise.
+ * The paper stage pinned below the shelf, in Grokipedia's shape: browse
+ * arrows, kicker + serif title + meta line, and an ink CTA on the right.
+ * Continue-reading hero when idle; the presented book's details + actions
+ * when one is pulled off the shelf. Keyed remount re-runs band-rise.
  */
 export default function ShelfLabel({
   hero,
   presented,
   onOpen,
+  onNavigate,
   onClear,
 }: ShelfLabelProps) {
   const remove = useLibraryStore((s) => s.remove)
   const refresh = useLibraryStore((s) => s.refresh)
   const [rechucking, setRechucking] = useState(false)
-  const heroThumbRef = useRef<HTMLDivElement>(null)
 
   const gen = presented?.generation
   const generating = presented && gen != null && gen.ready < gen.total
   const warnCount = presented?.warnings?.length ?? 0
+  const book = presented ?? hero
 
   return (
     <div
@@ -64,11 +44,27 @@ export default function ShelfLabel({
       }}
     >
       <div
-        className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3"
+        className="shelf-label-row"
         key={presented?.id ?? hero?.id ?? 'idle'}
       >
         {presented ? (
           <>
+            <div className="shelf-nav-cluster" aria-label="Browse the shelf">
+              <button
+                className="shelf-nav"
+                aria-label="Previous book"
+                onClick={() => onNavigate(-1)}
+              >
+                ‹
+              </button>
+              <button
+                className="shelf-nav"
+                aria-label="Next book"
+                onClick={() => onNavigate(1)}
+              >
+                ›
+              </button>
+            </div>
             <div
               className="shelf-label-copy min-w-0 flex-1"
               role="status"
@@ -112,7 +108,10 @@ export default function ShelfLabel({
                       }}
                     />
                   </div>
-                  <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: 'var(--muted)' }}
+                  >
                     Generating narration — {gen.ready}/{gen.total} parts
                     {gen.failed > 0 && (
                       <span style={{ color: 'var(--danger)' }}>
@@ -124,65 +123,59 @@ export default function ShelfLabel({
                 </div>
               )}
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  className="btn btn-ghost btn-sm"
-                  title={
-                    rechucking
-                      ? 'Re-chunking…'
-                      : 'Re-break narration at sentence boundaries (keeps existing audio)'
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                className="btn btn-ghost btn-sm"
+                title={
+                  rechucking
+                    ? 'Re-chunking…'
+                    : 'Re-break narration at sentence boundaries (keeps existing audio)'
+                }
+                disabled={rechucking}
+                onClick={async () => {
+                  setRechucking(true)
+                  try {
+                    const r = await rechunkBook(presented.id)
+                    window.alert(
+                      `Re-broke ${r.sections_total} sections at sentence boundaries. ` +
+                        (r.sections_reset
+                          ? `${r.sections_reset} section(s) need new audio and are regenerating now.`
+                          : 'All audio was reused — nothing to regenerate.'),
+                    )
+                  } catch (err) {
+                    window.alert(`Re-chunk failed: ${(err as Error).message}`)
+                  } finally {
+                    setRechucking(false)
+                    void refresh()
                   }
-                  disabled={rechucking}
-                  onClick={async () => {
-                    setRechucking(true)
-                    try {
-                      const r = await rechunkBook(presented.id)
-                      window.alert(
-                        `Re-broke ${r.sections_total} sections at sentence boundaries. ` +
-                          (r.sections_reset
-                            ? `${r.sections_reset} section(s) need new audio and are regenerating now.`
-                            : 'All audio was reused — nothing to regenerate.'),
-                      )
-                    } catch (err) {
-                      window.alert(`Re-chunk failed: ${(err as Error).message}`)
-                    } finally {
-                      setRechucking(false)
-                      void refresh()
-                    }
-                  }}
-                >
-                  {rechucking ? '⏳' : '↺'}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  title="Remove from library"
-                  onClick={() => {
-                    if (window.confirm(`Remove "${presented.title}" from library?`)) {
-                      onClear()
-                      void remove(presented.id)
-                    }
-                  }}
-                >
-                  ✕
-                </button>
-                <button
-                  className="btn btn-accent"
-                  onClick={() => onOpen(presented, null)}
-                >
-                  Read
-                </button>
-              </div>
-              <p className="kicker hidden md:block">
-                Select again to read · ← → browse · Esc re-shelve
-              </p>
+                }}
+              >
+                {rechucking ? '⏳' : '↺'}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Remove from library"
+                onClick={() => {
+                  if (
+                    window.confirm(`Remove "${presented.title}" from library?`)
+                  ) {
+                    onClear()
+                    void remove(presented.id)
+                  }
+                }}
+              >
+                ✕
+              </button>
+              <button
+                className="shelf-label-cta"
+                onClick={() => onOpen(presented)}
+              >
+                Read <span aria-hidden="true">→</span>
+              </button>
             </div>
           </>
-        ) : hero ? (
+        ) : book ? (
           <>
-            <div ref={heroThumbRef} className="shrink-0">
-              <Thumb book={hero} />
-            </div>
             <div className="shelf-label-copy min-w-0 flex-1">
               <p className="kicker" style={{ color: 'var(--accent)' }}>
                 Continue reading
@@ -191,17 +184,18 @@ export default function ShelfLabel({
                 className="shelf-label-title"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                {hero.title}
+                {book.title}
               </h2>
               <p className="shelf-label-meta">
-                {hero.author || 'Unknown'} · {Math.round(hero.percent ?? 0)}% read
+                {book.author || 'Unknown'} · {Math.round(book.percent ?? 0)}%
+                read
               </p>
             </div>
             <button
-              className="btn btn-accent shrink-0"
-              onClick={() => onOpen(hero, heroThumbRef.current)}
+              className="shelf-label-cta shrink-0"
+              onClick={() => onOpen(book)}
             >
-              Continue →
+              Continue <span aria-hidden="true">→</span>
             </button>
           </>
         ) : (
@@ -213,6 +207,9 @@ export default function ShelfLabel({
           </div>
         )}
       </div>
+      {presented && (
+        <p className="kicker shelf-hint">Select again to read · ← → browse · Esc re-shelve</p>
+      )}
     </div>
   )
 }

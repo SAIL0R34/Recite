@@ -4,7 +4,7 @@
 import type { BookSummary } from '../types'
 
 /** Horizontal gap between books on a shelf — keep in sync with --shelf-gap. */
-export const SHELF_GAP = 14
+export const SHELF_GAP = 10
 
 /** FNV-1a 32-bit hash. */
 function hash32(s: string): number {
@@ -24,6 +24,11 @@ function hash32(s: string): number {
 export function spineTint(title: string): string {
   const hue = hash32(title) % 360
   return `hsl(${hue} 27% 34%)`
+}
+
+/** Grokipedia's shelves mix book heights (292/280px…) — same trick, hashed. */
+export function spineScale(title: string): number {
+  return 0.93 + (hash32('~' + title) % 8) / 100
 }
 
 /** Stagger for the idle float, so a shelf doesn't bob in unison. */
