@@ -1,7 +1,10 @@
 // Reading-session tracking: one sitting = mount → unmount of the reader
 // route. The duration is beaconed to the backend for statistics and left
-// client-side for the library's close celebration.
+// in a store for the library's close celebration — a store, not module
+// state, because React 18 gives no ordering guarantee between the deleted
+// reader's cleanup and the new library's mount effects.
 
+import { create } from 'zustand'
 import { sendSessionBeacon } from './api/client'
 
 export interface EndedSession {
@@ -14,8 +17,14 @@ export interface EndedSession {
 /** Sittings shorter than this don't get celebrated (still recorded). */
 export const MIN_CELEBRATE_MS = 60_000
 
+interface EndedState {
+  ended: EndedSession | null
+}
+
+/** The library subscribes; endReadingSession publishes. */
+export const useEndedSession = create<EndedState>(() => ({ ended: null }))
+
 let current: { bookId: string; title: string; start: number } | null = null
-let ended: EndedSession | null = null
 
 export function beginReadingSession(bookId: string, title: string): void {
   // close any dangling sitting (rapid book → book navigation)
@@ -30,7 +39,7 @@ export function endReadingSession(): EndedSession | null {
   const now = Date.now()
   const s: EndedSession = { bookId, title, startedMs: start, ms: now - start }
   if (s.ms >= 1000) sendSessionBeacon(s)
-  if (s.ms >= MIN_CELEBRATE_MS) ended = s
+  if (s.ms >= MIN_CELEBRATE_MS) useEndedSession.setState({ ended: s })
   return s
 }
 
@@ -38,9 +47,10 @@ export function endReadingSession(): EndedSession | null {
  *  A sitting that ended long ago (tab hidden mid-reader, returned to
  *  hours later) is dropped rather than celebrated out of the blue. */
 export function takeEndedSession(): EndedSession | null {
-  const s = ended
-  ended = null
-  if (s && Date.now() - (s.startedMs + s.ms) > 5 * 60_000) return null
+  const s = useEndedSession.getState().ended
+  if (!s) return null
+  useEndedSession.setState({ ended: null })
+  if (Date.now() - (s.startedMs + s.ms) > 5 * 60_000) return null
   return s
 }
 

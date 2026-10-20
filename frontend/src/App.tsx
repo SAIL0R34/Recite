@@ -1,6 +1,7 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import LibraryView from './library/LibraryView'
 import ReaderView from './reader/ReaderView'
+import StatsView from './stats/StatsView'
 import { useLibraryStore } from './stores/libraryStore'
 import { useSettingsStore } from './stores/settingsStore'
 import AppearancePanel from './reader/AppearancePanel'
@@ -53,6 +54,15 @@ function AppShell() {
             Recite
           </span>
           <span className="kicker hidden sm:inline">listen &amp; read along</span>
+          {!onReader && (
+            <Link
+              to="/stats"
+              className="kicker stats-link hidden sm:inline"
+              title="Reading analytics"
+            >
+              Statistics
+            </Link>
+          )}
         </a>
         <div className="flex items-center gap-2">
           {!onReader && (
@@ -83,6 +93,7 @@ function AppShell() {
       <main className="min-h-0 flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<LibraryView />} />
+          <Route path="/stats" element={<StatsView />} />
           <Route path="/book/:id" element={<ReaderView />} />
           <Route path="/book" element={<Navigate to="/" replace />} />
           <Route path="*" element={<NotFound />} />

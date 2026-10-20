@@ -31,6 +31,11 @@ export function spineScale(title: string): number {
   return 0.93 + (hash32('~' + title) % 8) / 100
 }
 
+/** Resting lean, 82–85°: real shelves aren't machine-square. */
+export function restTilt(title: string): string {
+  return `${82 + (hash32('=' + title) % 4)}deg`
+}
+
 /** Stagger for the idle float, so a shelf doesn't bob in unison. */
 export function floatDelay(title: string): string {
   return `${(hash32(title) % 40) / 10}s`

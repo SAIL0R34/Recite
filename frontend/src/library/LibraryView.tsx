@@ -7,8 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useFlightStore } from '../stores/flightStore'
 import { startBookFlight } from '../motion'
 import { praise } from '../PraiseConfetti'
-import { takeEndedSession } from '../readingSession'
-import type { EndedSession } from '../readingSession'
+import { useEndedSession } from '../readingSession'
 import { sectionBooks } from './shelf'
 import Bookcase from './Bookcase'
 import ShelfLabel from './ShelfLabel'
@@ -29,14 +28,17 @@ export default function LibraryView() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [launchingId, setLaunchingId] = useState<string | null>(null)
   const [perRow, setPerRow] = useState(8)
-  const [celebrate, setCelebrate] = useState<EndedSession | null>(null)
   const caseRef = useRef<HTMLDivElement>(null)
+  // a sitting that ends (reader unmount) lands here whenever it lands —
+  // subscription, not mount-order
+  const endedSession = useEndedSession((s) => s.ended)
 
   useEffect(() => {
     void useLibraryStore.getState().refresh()
-    // a sitting that just ended gets its close celebration
-    const s = takeEndedSession()
-    if (s) setCelebrate(s)
+    // drop a stale sitting (tab hidden mid-reader, returned to much later)
+    const s = useEndedSession.getState().ended
+    if (s && Date.now() - (s.startedMs + s.ms) > 5 * 60_000)
+      useEndedSession.setState({ ended: null })
   }, [])
 
   // While any book is still generating narration, refresh the list so it
@@ -270,8 +272,11 @@ export default function LibraryView() {
         onNavigate={navigateShelf}
         onClear={clear}
       />
-      {celebrate && (
-        <SessionPraise session={celebrate} onDone={() => setCelebrate(null)} />
+      {endedSession && (
+        <SessionPraise
+          session={endedSession}
+          onDone={() => useEndedSession.setState({ ended: null })}
+        />
       )}
       {dialogOpen && <AddBookDialog />}
     </div>
