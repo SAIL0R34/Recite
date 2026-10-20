@@ -6,6 +6,7 @@ import { useSettingsStore } from './stores/settingsStore'
 import AppearancePanel from './reader/AppearancePanel'
 import ToastHost from './library/ToastHost'
 import BookTransition from './BookTransition'
+import PraiseConfetti from './PraiseConfetti'
 import { useEffect, useState } from 'react'
 
 function NotFound() {
@@ -88,6 +89,7 @@ function AppShell() {
         </Routes>
       </main>
       <BookTransition />
+      <PraiseConfetti />
       <ToastHost />
     </div>
   )

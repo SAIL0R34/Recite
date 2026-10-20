@@ -233,6 +233,22 @@ body {
   .book-flight-scrim {
     display: none; /* belt: the capture gate means it should never mount */
   }
+  /* the bookcase presents as static poses — state, not choreography */
+  .book,
+  .book-front,
+  .book-shadow,
+  .book-bob,
+  .book-sheen,
+  .book-top {
+    animation: none !important;
+    transition: none !important;
+  }
+  .shelf-label-copy {
+    animation: none !important;
+  }
+  .praise {
+    display: none;
+  }
 }
 
 /* ---- book-open flight (library card → reader) --------------------------- */
@@ -362,6 +378,510 @@ body {
   transform: scale(0.98);
   opacity: 0.65;
   transition: transform 220ms ease-out, opacity 220ms ease-out;
+}
+
+/* ---- bookcase (Grokipedia-style shelf) -----------------------------------
+   Books are pure-CSS 3D boxes: front cover + spine + page-block top, built
+   from centered faces (inset:0; margin:auto) so the 3D chain stays pure.
+   Decorative motion (float, sheen, hop, confetti) is scoped to
+   [data-anim='on'], set by settingsStore.applyTheme — mirrors animOK(). */
+
+.bookcase {
+  --shelf-gap: 14px; /* keep in sync with SHELF_GAP in library/shelf.ts */
+}
+
+.shelf-section {
+  margin-bottom: 2.75rem;
+}
+.shelf-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.shelf-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+.shelf-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.shelf-row {
+  padding-top: 52px; /* headroom for the pull-out hop */
+}
+.shelf-books {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--shelf-gap);
+  position: relative;
+  z-index: 2;
+}
+.shelf-plank {
+  height: 12px;
+  margin: -2px -16px 0;
+  background: linear-gradient(
+    to bottom,
+    var(--wood-hi),
+    var(--wood-mid) 55%,
+    var(--wood-lo)
+  );
+  border-radius: 3px 3px 5px 5px;
+  box-shadow:
+    0 3px 0 -1px var(--wood-lip),
+    0 14px 20px -10px rgb(0 0 0 / 0.38);
+  position: relative;
+  z-index: 1;
+}
+
+/* -- the 3D book ---------------------------------------------------------- */
+
+.book-scene {
+  --bw: clamp(56px, 6vw, 84px);
+  --bh: calc(var(--bw) * 1.5);
+  --bd: calc(var(--bw) * 0.22);
+  position: relative;
+  display: block;
+  width: var(--bw);
+  height: var(--bh);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  perspective: 1400px;
+  perspective-origin: 45% 40%;
+  -webkit-tap-highlight-color: transparent;
+  font: inherit;
+}
+.book-scene:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 5px;
+  border-radius: 10px;
+}
+.book-scene.is-presented {
+  z-index: 5;
+}
+
+/* idle bob lives on its own wrapper so hover/present transforms compose */
+.book-bob {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.book {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transform-style: preserve-3d;
+  transform: rotateY(9deg);
+  transition: transform 420ms var(--ease-out-soft);
+  will-change: transform;
+}
+.book-face {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  display: block;
+  backface-visibility: hidden;
+}
+
+.book-front {
+  width: var(--bw);
+  height: var(--bh);
+  transform: translateZ(calc(var(--bd) / 2));
+  border-radius: 3px 9px 9px 3px;
+  overflow: hidden;
+  background: var(--book-body);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+.book-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.book-typo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12% 9%;
+  text-align: center;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--tint) 72%, #fff),
+    var(--tint) 72%
+  );
+  color: #f6f1e4;
+}
+.book-typo-title {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.book-typo-author {
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+/* progress bookmark hanging down the cover */
+.book-ribbon {
+  position: absolute;
+  top: 0;
+  left: 62%;
+  width: 7%;
+  min-width: 4px;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 6px), 0 100%);
+  z-index: 2;
+}
+
+/* paper belly band on the presented book (decorative — text lives in the
+   label stage; books are too narrow for Grokipedia's band copy) */
+.book-band {
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  bottom: 0;
+  height: 26%;
+  border-radius: 0 0 8px 5px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--paper-raised) 82%, #fff),
+    var(--paper-raised) 45%,
+    var(--bg)
+  );
+  box-shadow: 0 -1px 2px rgb(0 0 0 / 0.12);
+}
+.book-band::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain);
+  background-size: 90px;
+  mix-blend-mode: multiply;
+  opacity: 0.3;
+}
+
+.book-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgb(255 255 255 / 0.14),
+    transparent 62%
+  );
+  background-size: 260% 100%;
+  background-position: 70% 0;
+  mix-blend-mode: soft-light;
+}
+
+.book-spine {
+  width: var(--bd);
+  height: var(--bh);
+  transform: rotateY(-90deg) translateZ(calc(var(--bw) / 2));
+  border-radius: 3px 0 0 3px;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--tint) 68%, #000),
+    var(--tint) 45%,
+    color-mix(in srgb, var(--tint) 82%, #fff) 75%,
+    color-mix(in srgb, var(--tint) 60%, #000)
+  );
+  box-shadow:
+    inset 1px 0 rgb(255 255 255 / 0.12),
+    inset -1px 0 rgb(0 0 0 / 0.3);
+  overflow: hidden;
+}
+.book-spine-title {
+  writing-mode: vertical-rl;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: rgb(255 255 255 / 0.87);
+  white-space: nowrap;
+  max-height: calc(100% - 26px);
+  margin: 6px auto 0;
+  padding: 8px 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+}
+.book-spine-band {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background: linear-gradient(to bottom, var(--paper-raised), var(--bg));
+  box-shadow: 0 -1px rgb(0 0 0 / 0.18);
+}
+
+/* page-block top edge; warm gilt wash while narration generates */
+.book-top {
+  width: var(--bw);
+  height: var(--bd);
+  transform: rotateX(90deg) translateZ(calc(var(--bh) / 2));
+  background:
+    repeating-linear-gradient(
+      to right,
+      rgb(0 0 0 / 0.1) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(to bottom, var(--paper-raised), var(--bg));
+  border-radius: 2px;
+}
+.book-scene.is-generating .book-top {
+  background:
+    repeating-linear-gradient(
+      to right,
+      rgb(0 0 0 / 0.08) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--accent) 55%, var(--paper-raised)),
+      var(--paper-raised)
+    );
+}
+
+.book-shadow {
+  position: absolute;
+  left: 6%;
+  right: -6%;
+  bottom: -7px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.38), transparent 70%);
+  filter: blur(3px);
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+
+/* poses */
+@media (hover: hover) {
+  .book-scene:hover:not(.is-presented) .book {
+    transform: translateY(-6px) rotateY(16deg);
+  }
+  .book-scene:hover .book-shadow {
+    transform: scale(1.08, 1.18);
+    opacity: 0.9;
+  }
+}
+.book-scene.is-presented .book {
+  transform: translateY(-26px) translateZ(26px) rotateY(-11deg);
+}
+.book-scene.is-presented .book-shadow {
+  transform: scale(1.28, 1.45) translateX(6px);
+  opacity: 1;
+}
+/* one flat frame for the flight to measure (overlay clone hides it) */
+.book-scene.is-launching .book {
+  transform: none !important;
+  transition: none !important;
+}
+.book-scene.is-launching .book-shadow,
+.book-scene.is-launching .book-sheen {
+  opacity: 0;
+}
+
+/* choreography — decorative only, so gated on [data-anim] */
+html[data-anim='on'] .book-scene:not(.is-presented) .book-bob {
+  animation: book-float 7s ease-in-out infinite;
+  animation-delay: var(--float-delay, 0s);
+}
+html[data-anim='on'] .book-scene.is-presented .book {
+  animation: book-hop 780ms var(--ease-spring);
+}
+html[data-anim='on'] .book-scene.is-presented .book-front {
+  animation: cover-swing 720ms var(--ease-spring);
+}
+html[data-anim='on'] .book-sheen {
+  animation: sheen-drift 9s ease-in-out infinite;
+}
+html[data-anim='on'] .book-scene:not(.is-presented) .book-shadow {
+  animation: shadow-breathe 7s ease-in-out infinite;
+  animation-delay: var(--float-delay, 0s);
+}
+
+@keyframes book-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotateY(0deg) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -7px, 0) rotateY(3.5deg) rotate(-0.6deg);
+  }
+}
+@keyframes book-hop {
+  0% {
+    transform: rotateY(9deg);
+  }
+  45% {
+    transform: translate3d(0, -44px, 30px) rotateY(-44deg);
+  }
+  100% {
+    transform: translateY(-26px) translateZ(26px) rotateY(-11deg);
+  }
+}
+@keyframes cover-swing {
+  0% {
+    transform: translateZ(calc(var(--bd) / 2)) rotateY(0deg);
+  }
+  42% {
+    transform: translateZ(calc(var(--bd) / 2)) rotateY(-9deg);
+  }
+  100% {
+    transform: translateZ(calc(var(--bd) / 2)) rotateY(0deg);
+  }
+}
+@keyframes sheen-drift {
+  0%,
+  100% {
+    background-position: 70% 0;
+  }
+  50% {
+    background-position: 20% 0;
+  }
+}
+@keyframes shadow-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(0.94);
+    opacity: 0.6;
+  }
+}
+@keyframes gilt-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.35);
+  }
+}
+html[data-anim='on'] .book-scene.is-generating .book-top {
+  animation: gilt-pulse 1.6s ease-in-out infinite;
+}
+
+/* -- the sticky label stage ------------------------------------------------ */
+
+.shelf-label {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  background: var(--paper-raised);
+  border-top: 1px solid var(--hairline);
+  box-shadow: 0 -10px 16px -12px rgb(0 0 0 / 0.18);
+}
+html[data-anim='on'] .shelf-label-copy {
+  animation: band-rise 300ms var(--ease-out-soft);
+}
+@keyframes band-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.shelf-label-title {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.15;
+  margin: 2px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.shelf-label-meta {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin: 0;
+}
+.shelf-label-warn {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+/* -- praise confetti (open-to-read celebration) ---------------------------- */
+
+.praise {
+  position: fixed;
+  z-index: 46; /* above the flight scrim (45), below the flying cover (50) */
+  pointer-events: none;
+}
+.praise-bit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 10px;
+  border-radius: 1px;
+  opacity: 0;
+}
+.praise-bit:nth-child(5n + 1) {
+  background: var(--accent);
+}
+.praise-bit:nth-child(5n + 2) {
+  width: 4px;
+  height: 14px;
+  background: color-mix(in srgb, var(--accent) 45%, #fff);
+}
+.praise-bit:nth-child(5n + 3) {
+  background: color-mix(in srgb, var(--ink) 65%, transparent);
+}
+.praise-bit:nth-child(5n + 4) {
+  background: var(--paper-raised);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.praise-bit:nth-child(5n) {
+  background: var(--wood-mid);
+}
+html[data-anim='on'] .praise-bit {
+  animation: praise-pop var(--dur, 900ms) var(--ease-out-soft) var(--del, 0ms)
+    forwards;
+}
+@keyframes praise-pop {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.6);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  55% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy)))
+      rotate(var(--r1, 180deg)) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(
+        calc(-50% + calc(var(--dx, 0px) * 1.35)),
+        calc(-50% + var(--dy, -60px) + 90px)
+      )
+      rotate(var(--r2, 360deg)) scale(0.9);
+    opacity: 0;
+  }
 }
 
 .page-hotspot {
