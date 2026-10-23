@@ -89,6 +89,8 @@ html[data-theme='dark'] {
   --chart-mark: var(--accent);
   --ease-spring: cubic-bezier(0.34, 1.35, 0.44, 1);
   --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* monotonic settle — never swings past its resting angle */
+  --ease-settle: cubic-bezier(0.16, 0.72, 0.24, 1);
   /* paper grain — feTurbulence noise tile (multiply-blended at low opacity) */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
 }
@@ -253,7 +255,8 @@ body {
   .book-shadow,
   .book-bob,
   .book-sheen,
-  .book-top {
+  .book-top,
+  .book-band {
     animation: none !important;
     transition: none !important;
   }
@@ -462,6 +465,8 @@ body {
   --bh: calc(clamp(230px, 22vw, 288px) * var(--spine-scale, 1));
   --cover-w: calc(var(--bh) * 0.685);
   --present-scale: 1.18;
+  /* one source of truth for the settle pose — class rule and book-hop 100% */
+  --present-transform: rotateY(4deg) scale(var(--present-scale));
   position: relative;
   display: block;
   flex: 0 0 auto;
@@ -472,10 +477,15 @@ body {
   background: none;
   cursor: pointer;
   perspective: 1400px;
-  perspective-origin: 50% 36%;
+  /* the camera looks at the spine at rest and pans to the cover as the
+     book opens — an origin off the rotating plane's centerline keystones
+     horizontal edges into shear instead of symmetric convergence */
+  perspective-origin: var(--spine-w) calc(var(--bh) * 0.5);
   -webkit-tap-highlight-color: transparent;
   font: inherit;
-  transition: width 620ms var(--ease-spring);
+  transition:
+    width 620ms var(--ease-spring) 180ms,
+    perspective-origin 620ms var(--ease-settle);
 }
 .book-scene:focus-visible {
   outline: 2px solid var(--ring);
@@ -485,6 +495,7 @@ body {
 .book-scene.is-presented {
   width: calc(var(--cover-w) * var(--present-scale) + var(--spine-w));
   z-index: 5;
+  perspective-origin: calc(var(--cover-w) * 0.59) calc(6px + var(--bh) / 2);
 }
 
 /* idle bob lives on its own wrapper so hover/present transforms compose */
@@ -502,7 +513,7 @@ body {
   transform-style: preserve-3d;
   transform-origin: 0% 100%; /* the spine hinge (y-origin only affects scale) */
   transform: rotateY(var(--rest-tilt, 84deg));
-  transition: transform 620ms var(--ease-spring);
+  transition: transform 620ms var(--ease-settle);
   will-change: transform;
 }
 .book-face {
@@ -593,6 +604,17 @@ body {
   box-shadow:
     0 1px 0 rgb(0 0 0 / 0.08),
     0 2px 6px rgb(0 0 0 / 0.1);
+}
+html[data-anim='on'] .book-band {
+  animation: band-fade 260ms ease 460ms both;
+}
+@keyframes band-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .book-band::after {
   content: '';
@@ -731,7 +753,11 @@ body {
   border-radius: 50%;
   background: radial-gradient(closest-side, rgb(0 0 0 / 0.4), transparent 70%);
   filter: blur(3px);
-  transition: transform 400ms var(--ease-out-soft), opacity 400ms ease;
+  transition:
+    transform 400ms var(--ease-out-soft),
+    opacity 400ms ease,
+    left 400ms var(--ease-out-soft),
+    right 400ms var(--ease-out-soft);
 }
 
 /* poses: rest spine-on (84°), hover cracks the cover open, presented faces
@@ -746,12 +772,14 @@ body {
   }
 }
 .book-scene.is-presented .book {
-  transform: rotateY(6deg) scale(var(--present-scale));
+  transform: var(--present-transform);
   transform-origin: 0% 100%;
 }
 .book-scene.is-presented .book-shadow {
-  transform: scale(1.5, 1.6) translateX(10px);
-  opacity: 1;
+  left: 12%;
+  right: 8%;
+  transform: scale(1.2, 1.35);
+  opacity: 0.95;
 }
 /* one flat frame for the flight to measure (overlay clone hides it) */
 .book-scene.is-launching .book {
@@ -796,12 +824,19 @@ html[data-anim='on'] .book-scene:not(.is-presented) .book-shadow {
 @keyframes book-hop {
   0% {
     transform: rotateY(var(--rest-tilt, 84deg));
+    animation-timing-function: cubic-bezier(0.2, 0.6, 0.35, 1);
   }
-  45% {
-    transform: rotateY(30deg) translateY(-24px) scale(1.06);
+  /* most of the turn completes early, while the slot is still narrow and
+     the oblique cover hides behind its neighbors — a large cover rotating
+     through big angles keystones ugly no matter where the camera sits */
+  38% {
+    transform: rotateY(14deg) translateY(-20px) scale(1.03);
+    /* monotonic into the settle — an overshooting bezier here swings the
+       cover past flat and flashes the book's backside */
+    animation-timing-function: cubic-bezier(0.16, 0.72, 0.24, 1);
   }
   100% {
-    transform: rotateY(5deg) scale(var(--present-scale));
+    transform: var(--present-transform);
   }
 }
 @keyframes sheen-drift {
