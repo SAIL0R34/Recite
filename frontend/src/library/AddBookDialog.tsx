@@ -29,11 +29,11 @@ export default function AddBookDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="modal-scrim fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={closeDialog}
     >
       <div
-        className="card flex max-h-[80vh] w-full max-w-xl flex-col p-5"
+        className="card modal-card flex max-h-[80vh] w-full max-w-xl flex-col p-5"
         style={{ background: 'var(--surface)' }}
         onClick={(e) => e.stopPropagation()}
       >

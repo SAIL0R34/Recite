@@ -8,7 +8,7 @@ export default function ToastHost() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="card pointer-events-auto max-w-sm p-3 text-sm"
+          className="card toast pointer-events-auto max-w-sm p-3 text-sm"
           role="status"
           style={t.kind === 'error' ? { borderColor: '#b91c1c' } : undefined}
         >

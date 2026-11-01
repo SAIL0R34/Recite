@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { getStats } from '../api/client'
 import type { Stats } from '../api/client'
@@ -114,7 +115,8 @@ export default function StatsView() {
                       className="stats-bar"
                       style={{
                         height: `${Math.max(2, (d.seconds / maxDay) * 100)}%`,
-                      }}
+                        '--i': i,
+                      } as CSSProperties}
                     >
                       <span className="stats-tip">
                         {dayLabel(d.date)} · {dur(d.seconds)}

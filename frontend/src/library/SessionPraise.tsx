@@ -58,6 +58,9 @@ export default function SessionPraise({ session, onDone }: SessionPraiseProps) {
         >
           You read for {formatDuration(session.ms)}.
         </h2>
+        <p className="session-praise-asterism" aria-hidden="true">
+          ⁂
+        </p>
         <p className="session-praise-book">{session.title}</p>
         <p className="kicker mt-3">Click anywhere to continue</p>
       </div>

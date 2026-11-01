@@ -46,13 +46,16 @@ function AppShell() {
         className="flex items-center justify-between border-b px-5 py-2.5"
         style={{ borderColor: 'var(--hairline)' }}
       >
-        <a href="/" className="flex items-baseline gap-2.5">
-          <span
+        {/* the masthead wordmark is the only <a>; siblings, not nested —
+            an <a> inside an <a> is invalid DOM and React warns about it */}
+        <div className="flex items-baseline gap-2.5">
+          <a
+            href="/"
             className="text-[22px] font-medium tracking-tight"
             style={{ fontFamily: 'var(--font-display)' }}
           >
             Recite
-          </span>
+          </a>
           <span className="kicker hidden sm:inline">listen &amp; read along</span>
           {!onReader && (
             <Link
@@ -63,7 +66,7 @@ function AppShell() {
               Statistics
             </Link>
           )}
-        </a>
+        </div>
         <div className="flex items-center gap-2">
           {!onReader && (
             <button
@@ -84,7 +87,7 @@ function AppShell() {
         </div>
       </header>
       {appearanceOpen && !onReader && (
-        <div className="absolute right-4 top-12 z-40">
+        <div className="popover-in absolute right-4 top-12 z-40">
           <AppearancePanel />
         </div>
       )}
