@@ -1266,16 +1266,22 @@ html[data-anim='on'] .book-band {
 /* poses: rest spine-on (84°), hover cracks the cover open, presented faces
    you and steps forward */
 @media (hover: hover) {
-  /* the crack pans the camera with the cover — an origin stuck at the spine
-     keystones the angled cover into a trapezoid — and lifts the scene above
-     right-hand neighbors: scenes are separate 3D contexts, so stacking
-     order IS the depth between books */
+  /* the crack widens the slot (neighbors part, as on present), pans the
+     camera with the cover — an origin stuck at the spine keystones it into
+     a trapezoid — and lifts the scene for the transient overlap while the
+     slot is still opening: scenes are separate 3D contexts, so stacking
+     order IS the depth between books. Crack angle 34°: steep enough to
+     read as pulled out, shallow enough that the cover's title stays
+     legible (at 56° the text compressed to an unreadable sliver). Slot
+     width = spine + the cover's projected width (cos 34° ≈ 0.83, a hair
+     of margin) */
   .book-scene:hover:not(.is-presented) {
+    width: calc(var(--spine-w) + var(--cover-w) * 0.84);
     z-index: 5;
-    perspective-origin: calc(var(--cover-w) * 0.3) calc(var(--bh) * 0.5);
+    perspective-origin: calc(var(--cover-w) * 0.42) calc(var(--bh) * 0.5);
   }
   .book-scene:hover:not(.is-presented) .book {
-    transform: rotateY(56deg) translateY(-3px);
+    transform: rotateY(34deg) translateY(-3px);
   }
   .book-scene:hover:not(.is-presented) .book-spine {
     filter: brightness(1.1);
@@ -1284,7 +1290,7 @@ html[data-anim='on'] .book-band {
      stays grounded instead of floating on a spine-width blob */
   .book-scene:hover:not(.is-presented) .book-shadow {
     left: 6%;
-    right: calc(-1 * var(--cover-w) * 0.56);
+    right: calc(-1 * var(--cover-w) * 0.82);
     transform: scale(1, 1.15);
     opacity: 0.75;
   }
