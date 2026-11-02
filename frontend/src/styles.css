@@ -1016,6 +1016,31 @@ input[type='range'].scrub:disabled {
   object-fit: cover;
   display: block;
 }
+/* the hinge crease — the groove where a hardcover's board bends to open,
+ * measured from the reference: a 1px dark-gilt hairline at the junction,
+ * then a ~3%-of-width darkened groove (lightness 39%→29%) with a faint
+ * raised catch-light at its center, easing back to the board by 9%.
+ * Black/white/gold only, so it reads on art and typo covers in every
+ * theme; it rides the 3D face, foreshortening with the book. */
+.book-cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* above the art, below the ribbon (z-2) */
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgb(139 92 8 / 0.35) 0,
+    rgb(139 92 8 / 0.12) 1.2%,
+    transparent 2%,
+    rgb(0 0 0 / 0.34) 2.6%,
+    rgb(0 0 0 / 0.18) 3.4%,
+    rgb(255 255 255 / 0.07) 4.2%,
+    rgb(0 0 0 / 0.24) 5%,
+    rgb(0 0 0 / 0.1) 6.5%,
+    transparent 9%
+  );
+}
 .book-typo {
   position: absolute;
   inset: 0;
