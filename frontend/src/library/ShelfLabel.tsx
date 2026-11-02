@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { BookSummary } from '../types'
 import { useLibraryStore } from '../stores/libraryStore'
-import { rechunkBook } from '../api/client'
+import { llmStatus, rechunkBook } from '../api/client'
+import type { LlmStatus } from '../api/client'
 
 interface ShelfLabelProps {
   hero?: BookSummary
@@ -30,6 +31,16 @@ export default function ShelfLabel({
   const remove = useLibraryStore((s) => s.remove)
   const refresh = useLibraryStore((s) => s.refresh)
   const [rechucking, setRechucking] = useState(false)
+  const [llm, setLlm] = useState<LlmStatus | null>(null)
+  useEffect(() => {
+    let live = true
+    llmStatus()
+      .then((s) => live && setLlm(s))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
 
   const gen = presented?.generation
   const generating = presented && gen != null && gen.ready < gen.total
@@ -129,15 +140,23 @@ export default function ShelfLabel({
                 title={
                   rechucking
                     ? 'Re-chunking…'
-                    : 'Re-break narration at sentence boundaries (keeps existing audio)'
+                    : llm?.configured
+                      ? `Re-break narration with the AI planner (${llm.model}; matching audio is kept)`
+                      : 'Re-break narration at sentence boundaries (keeps existing audio)'
                 }
                 disabled={rechucking}
                 onClick={async () => {
                   setRechucking(true)
                   try {
-                    const r = await rechunkBook(presented.id)
+                    const r = await rechunkBook(
+                      presented.id,
+                      llm?.configured ? 'llm' : 'heuristic',
+                    )
+                    const by = llm?.configured
+                      ? `the ${llm.model} planner`
+                      : 'sentence boundaries'
                     window.alert(
-                      `Re-broke ${r.sections_total} sections at sentence boundaries. ` +
+                      `Re-broke ${r.sections_total} sections at ${by}. ` +
                         (r.sections_reset
                           ? `${r.sections_reset} section(s) need new audio and are regenerating now.`
                           : 'All audio was reused — nothing to regenerate.'),

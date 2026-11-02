@@ -75,11 +75,19 @@ def _read(book_id: str) -> Optional[dict]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def init_manifest(book_id: str, sections: list, engine: str, voice: str) -> dict:
+def init_manifest(book_id: str, sections: list, engine: str, voice: str,
+                  planner: str = "heuristic") -> dict:
     """sections: [{idx, title, chunks:[{idx, para, sentence_range, text}]}]"""
+    from .ingest.chunker import RULE_VERSION
+
     manifest = {
         "engine": engine,
         "voice": voice,
+        # what planned the chunks ("heuristic" | "llm:<model>") and under
+        # which chunker rules — stamped HERE so the startup sweep never
+        # re-plans (and never overwrites an LLM plan with the heuristic)
+        "planner": planner,
+        "rule_version": RULE_VERSION,
         "alignment": "pending",
         "created_at": time.time(),
         "sections": [

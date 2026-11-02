@@ -24,7 +24,7 @@ import json
 from typing import Dict, List, Tuple
 
 from .. import config, manifestio
-from .chunker import plan_sections
+from . import llm_plan
 from .model import Paragraph, Section, Sentence
 
 #: one line per rule that changes chunk boundaries; kept in sync with
@@ -103,11 +103,19 @@ def _payload(sec: Section) -> dict:
 
 
 def plan_new_sections(old_sections: List[dict], stitched: List[Section],
-                      no_tts: set) -> Tuple[List[dict], dict]:
-    """Deterministic: old manifest sections + stitched sections -> new + report."""
+                      no_tts: set, use_llm: bool = False,
+                      breaker: "llm_plan.Breaker | None" = None,
+                      client: "object | None" = None) -> Tuple[List[dict], dict]:
+    """old manifest sections + stitched sections -> new + report. The
+    heuristic path is deterministic; the LLM path is validated per section
+    but model-dependent (its plan is persisted, never re-derived)."""
     by_idx = {s.idx: s for s in stitched}
+    if use_llm and breaker is None:
+        breaker = llm_plan.Breaker(config.LLM_MAX_FAILURES)
     report = {"kept": 0, "stale": 0, "new": 0, "kept_ms": 0, "stale_ms": 0,
-              "sections_kept": 0, "sections_reset": 0, "reset_idxs": []}
+              "sections_kept": 0, "sections_reset": 0, "reset_idxs": [],
+              "llm_sections": 0, "llm_fallback": 0, "llm_reasons": {},
+              "planner": "heuristic"}
     out: List[dict] = []
     for sec_old in old_sections:
         idx = sec_old.get("idx")
@@ -117,8 +125,16 @@ def plan_new_sections(old_sections: List[dict], stitched: List[Section],
         section = by_idx.get(idx)
         if section is None:
             continue                         # vanished from the document
-        planned, _tw = plan_sections([_payload(section)])
-        planned_chunks = (planned[0].get("chunks") if planned else []) or []
+        planned_chunks, _tw, llm_used, reason = llm_plan.plan_section(
+            _payload(section), use_llm, breaker or llm_plan.Breaker(1),
+            client=client)
+        if llm_used:
+            report["llm_sections"] += 1
+        else:
+            report["llm_fallback"] += 1
+            if reason:
+                report["llm_reasons"][reason] = \
+                    report["llm_reasons"].get(reason, 0) + 1
         old_by_key: Dict[Tuple, dict] = {}
         for c in sec_old.get("chunks") or []:
             key = (c.get("para"), tuple(c.get("sentence_range") or [0, 0]),
@@ -163,13 +179,20 @@ def plan_new_sections(old_sections: List[dict], stitched: List[Section],
                     "audio": f"audio/section-{idx:03d}.mp3",
                     "duration_ms": duration_ms, "status": status, "tts": True,
                     "chunks": new_chunks})
+    report["planner"] = (f"llm:{config.LLM_MODEL}" if report["llm_sections"]
+                         else "heuristic")
     return out, report
 
 
-def rechunk_book(book_id: str) -> dict:
+def rechunk_book(book_id: str, planner: str = "auto") -> dict:
     """Re-plan every section from document.json (mid-sentence paragraph
     stitching included); keep audio for chunks whose text is unchanged.
+    `planner`: "auto" (LLM when configured) | "heuristic" | "llm" (force;
+    unconfigured/failing sections still degrade to the heuristic).
     Returns a summary dict."""
+    if planner not in ("auto", "heuristic", "llm"):
+        raise ValueError(f"unknown planner: {planner!r}")
+    use_llm = planner == "llm" or (planner == "auto" and llm_plan.llm_configured())
     dp = config.book_file(book_id, "document.json")
     if not dp.exists():
         raise FileNotFoundError(f"no document.json for book {book_id}")
@@ -185,10 +208,17 @@ def rechunk_book(book_id: str) -> dict:
     tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     tmp.replace(dp)
 
-    new_sections, report = plan_new_sections(manifest.get("sections") or [],
-                                             sections, no_tts)
+    client = llm_plan.make_client() if use_llm else None
+    try:
+        new_sections, report = plan_new_sections(
+            manifest.get("sections") or [], sections, no_tts,
+            use_llm=use_llm, client=client)
+    finally:
+        if client is not None:
+            client.close()
     manifest["sections"] = new_sections
     manifest["rule_version"] = RULE_VERSION
+    manifest["planner"] = report["planner"]
     manifestio.save(book_id, manifest)
     # archive the stale final audio of reset sections
     for sec in new_sections:
@@ -201,6 +231,7 @@ def rechunk_book(book_id: str) -> dict:
                 pass
     report["sections_total"] = len(new_sections)
     report["rule_version"] = RULE_VERSION
+    report["planner_requested"] = planner
     return report
 
 
@@ -211,7 +242,8 @@ def needs_rechunk(manifest: dict) -> bool:
 
 def recheck_all() -> List[dict]:
     """Startup sweep: re-chunk every book whose manifest predates the
-    current chunker RULE_VERSION. Audio for unchanged chunk texts is kept."""
+    current chunker RULE_VERSION. Audio for unchanged chunk texts is kept.
+    Always heuristic — the sweep must never spend endpoint quota silently."""
     out: List[dict] = []
     if not config.BOOKS_DIR_PATH.exists():
         return out
@@ -226,7 +258,7 @@ def recheck_all() -> List[dict]:
         if not needs_rechunk(m):
             continue
         try:
-            r = rechunk_book(d.name)
+            r = rechunk_book(d.name, planner="heuristic")
             r["book_id"] = d.name
             out.append(r)
         except Exception:

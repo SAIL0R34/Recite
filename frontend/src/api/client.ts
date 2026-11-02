@@ -133,9 +133,26 @@ export const putProgress = (id: string, p: Progress) =>
     body: j(p),
   })
 
-/** Re-plan chunks under the current rules (keeps audio of unchanged text). */
-export const rechunkBook = (id: string): Promise<Record<string, unknown>> =>
-  request(`/api/books/${encodeURIComponent(id)}/rechunk`, { method: 'POST' })
+/** Re-plan chunks (keeps audio of unchanged text). planner: 'auto' uses
+ *  the LLM planner when an endpoint is configured, 'llm' forces it,
+ *  'heuristic' sticks to the built-in rules. */
+export const rechunkBook = (
+  id: string,
+  planner: 'auto' | 'heuristic' | 'llm' = 'auto',
+): Promise<Record<string, unknown>> =>
+  request(
+    `/api/books/${encodeURIComponent(id)}/rechunk?planner=${planner}`,
+    { method: 'POST' },
+  )
+
+/** Chunk-planner endpoint status (never includes the API key). */
+export interface LlmStatus {
+  configured: boolean
+  model: string
+  base: string
+}
+
+export const llmStatus = (): Promise<LlmStatus> => request('/api/llm')
 
 /** Kick the TTS queue; boostSection prioritises one section (usually current). */
 export const requestGeneration = (id: string, boostSection?: number) => {

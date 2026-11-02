@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -200,13 +201,14 @@ def get_audio(book_id: str, fname: str):
 
 
 @router.post("/{book_id}/rechunk")
-def rechunk(book_id: str):
-    """Re-plan chunks under the current rules, keeping audio for chunks
-    whose text is unchanged. Sections with stale slices re-enter the queue."""
+def rechunk(book_id: str, planner: Literal["auto", "heuristic", "llm"] = "auto"):
+    """Re-plan chunks, keeping audio for chunks whose text is unchanged.
+    Sections with stale slices re-enter the queue. `?planner=`: auto (LLM
+    when configured) | heuristic | llm (force; failing sections degrade)."""
     from ..ingest import rechunk as rechunk_module
     _require(book_id)
     try:
-        report = rechunk_module.rechunk_book(book_id)
+        report = rechunk_module.rechunk_book(book_id, planner=planner)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     for sec in (report.get("reset_idxs") or []):

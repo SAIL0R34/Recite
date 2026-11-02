@@ -45,6 +45,23 @@ TTS_GRACE_S = float(os.environ.get("RECITE_TTS_GRACE", "480"))
 # immediate retries for a failed section (lane-1) before it is marked failed
 TTS_RETRIES = int(os.environ.get("RECITE_TTS_RETRIES", "2"))
 
+# --- external endpoints (opt-in) ------------------------------------------
+# Two optional OpenAI-compatible services. Unset = disabled: Recite then
+# makes no network calls at all and book text never leaves the machine.
+# Keys live in the environment only — never in the settings DB and never
+# served by the API (the status routes report configured/model/base only).
+
+# Chat endpoint (OpenAI, an OpenAI-compatible proxy, Ollama, LM Studio —
+# anything that speaks POST {base}/v1/chat/completions). Drives the LLM
+# chunk planner; the key is sent only when set (local servers need none).
+LLM_BASE_URL = os.environ.get("RECITE_LLM_BASE_URL", "").rstrip("/")
+LLM_API_KEY = os.environ.get("RECITE_LLM_API_KEY", "")
+LLM_MODEL = os.environ.get("RECITE_LLM_MODEL", "")
+LLM_TIMEOUT_S = float(os.environ.get("RECITE_LLM_TIMEOUT", "60"))
+# consecutive planner failures before the rest of an operation falls back
+# to the heuristic without asking again
+LLM_MAX_FAILURES = int(os.environ.get("RECITE_LLM_MAX_FAILURES", "3"))
+
 # Frontend build dir (repo/../frontend/dist relative to this file's repo root)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"

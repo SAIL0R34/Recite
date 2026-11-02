@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
@@ -20,8 +21,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .. import config, db as _db_module, manifestio
-from . import epub as epub_module, pdf as pdf_module
-from .chunker import RULE_VERSION, plan_sections
+from . import epub as epub_module, llm_plan, pdf as pdf_module
 from .model import Document, Extraction, stitch_open_paragraphs
 
 ENGINE = "kokoro-0.9.4"
@@ -198,7 +198,13 @@ def ingest_file(path: str) -> dict:
 
     secs = document.to_manifest_sections()
     body = [d for d in secs if d["idx"] not in front]
-    chunk_sections, chunk_words = plan_sections(body)
+    chunk_sections, chunk_words, pstats = llm_plan.plan_sections_planned(
+        body, llm_plan.llm_configured())
+    if pstats["llm_sections"]:
+        logging.getLogger("recite").info(
+            "llm planner %s: %d section(s), %d fell back %s",
+            config.LLM_MODEL, pstats["llm_sections"],
+            pstats["fallback_sections"], pstats["fallback_reasons"])
     for d in secs:
         if d["idx"] in front:
             d["chunks"] = []
@@ -212,7 +218,7 @@ def ingest_file(path: str) -> dict:
 
     _write_json(config.book_file(book_id, "document.json"), document.to_dict())
     manifestio.init_manifest(book_id, sections=chunk_sections, engine=ENGINE,
-                             voice=_voice_setting())
+                             voice=_voice_setting(), planner=pstats["planner"])
     _write_cover(book_id, str(src), fmt)
     book = _db_module.db.add_book(book_id, str(src), title, extraction.author,
                                   fmt, warnings, total_words)
