@@ -566,6 +566,14 @@ input[type='range'].scrub:disabled {
   opacity: 1;
   pointer-events: auto;
 }
+/* manual collapse is sticky: !important so even :focus-within (focus sits
+   on the collapse button the instant it is clicked) cannot pin it open */
+.transport-shell.transport-collapsed,
+.transport-shell.transport-collapsed:focus-within {
+  transform: translateY(115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
 
 /* floating reveal pill (touch only; desktop hovers the bottom edge) */
 .reveal-btn {
@@ -592,6 +600,11 @@ input[type='range'].scrub:disabled {
   .reveal-btn {
     display: inline-flex;
   }
+}
+/* a COLLAPSED bar needs the pill on every device — desktop bottom-edge
+   hover only wakes the auto-hide, it cannot undo a manual collapse */
+.reveal-btn.always {
+  display: inline-flex;
 }
 .reveal-btn.reveal-hidden {
   transform: translate(-50%, 150%);

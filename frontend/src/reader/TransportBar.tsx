@@ -75,10 +75,13 @@ function fmt(ms: number): string {
 export default function TransportBar({
   timeline,
   onToggleBookmarks,
+  onCollapse,
   modelLoading = false,
 }: {
   timeline: Timeline
   onToggleBookmarks: () => void
+  /** fold the bar away until the reveal pill brings it back */
+  onCollapse: () => void
   /** first-run Kokoro model fetch — shown until the 'model ready' SSE event */
   modelLoading?: boolean
 }) {
@@ -189,6 +192,27 @@ export default function TransportBar({
             aria-label="cycle theme"
           >
             ◐
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={onCollapse}
+            title="Collapse playback bar"
+            aria-label="collapse playback bar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              focusable="false"
+            >
+              <polyline points="5 9 12 16 19 9" />
+            </svg>
           </button>
         </div>
       </div>

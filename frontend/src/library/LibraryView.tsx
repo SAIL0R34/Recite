@@ -83,6 +83,42 @@ export default function LibraryView() {
 
   const clear = useCallback(() => setSelectedId(null), [])
 
+  // auto re-shelve: a presented book left alone — no pointer over it, no
+  // clicks anywhere — for 5s goes back on the shelf, so Escape isn't the
+  // only way back. Hover or any click/key re-arms the wait; a pointer
+  // parked on the book at fire time postpones instead of clearing.
+  const RESHELVE_MS = 5000
+  useEffect(() => {
+    if (!selectedId) return
+    const shelve = () => {
+      const node = caseRef.current?.querySelector(
+        `[data-book-id="${CSS.escape(selectedId)}"]`,
+      )
+      if (node?.matches(':hover')) {
+        timer = setTimeout(shelve, RESHELVE_MS)
+        return
+      }
+      clear()
+    }
+    let timer = setTimeout(shelve, RESHELVE_MS)
+    const arm = () => {
+      clearTimeout(timer)
+      timer = setTimeout(shelve, RESHELVE_MS)
+    }
+    const el = caseRef.current?.querySelector(
+      `[data-book-id="${CSS.escape(selectedId)}"]`,
+    )
+    document.addEventListener('click', arm, true)
+    document.addEventListener('keydown', arm, true)
+    el?.addEventListener('mouseenter', arm)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', arm, true)
+      document.removeEventListener('keydown', arm, true)
+      el?.removeEventListener('mouseenter', arm)
+    }
+  }, [selectedId, clear])
+
   /**
    * Open a book to read. A presented book snaps its 3D pose flat for one
    * frame (the overlay's clone hides it) and flies from its cover; the hero

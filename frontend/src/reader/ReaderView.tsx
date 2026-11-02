@@ -219,6 +219,9 @@ export default function ReaderView() {
   // The bar slides away after a few idle seconds; a tap, a key, or the
   // cursor entering the bottom edge reveals it again (scrolling
   // deliberately does not). :focus-within pins it while a control is used.
+  // Collapsed is the manual, sticky version: stays away until the reveal
+  // pill (or nothing short of it) brings it back.
+  const [barCollapsed, setBarCollapsed] = useState(false)
   const [barVisible, setBarVisible] = useState(true)
   const barTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pokeBar = useCallback(() => {
@@ -480,23 +483,31 @@ export default function ReaderView() {
 
       {timeline && (
         <div
-          className={`transport-shell${barVisible ? '' : ' transport-hidden'}`}
+          className={`transport-shell${barVisible ? '' : ' transport-hidden'}${
+            barCollapsed ? ' transport-collapsed' : ''
+          }`}
           onPointerEnter={pauseBarHide}
           onPointerLeave={pokeBar}
         >
           <TransportBar
             timeline={timeline}
             onToggleBookmarks={() => setDrawerOpen((v) => !v)}
+            onCollapse={() => setBarCollapsed(true)}
             modelLoading={modelLoading}
           />
         </div>
       )}
 
       {/* touch devices have no hover zone — give them an explicit reveal
-          pill when the bar auto-hid */}
+          pill when the bar auto-hid or was collapsed */}
       <button
-        className={`reveal-btn${barVisible ? ' reveal-hidden' : ''}`}
-        onClick={pokeBar}
+        className={`reveal-btn${barCollapsed ? ' always' : ''}${
+          barVisible && !barCollapsed ? ' reveal-hidden' : ''
+        }`}
+        onClick={() => {
+          setBarCollapsed(false)
+          pokeBar()
+        }}
         title="Show playback controls"
         aria-label="Show playback controls"
       >
