@@ -1139,6 +1139,14 @@ html[data-anim='on'] .book-scene.is-presented::before {
       rgb(255 255 255 / 0.03) 0 1px,
       transparent 1px 3px
     ),
+    /* gentle downward lightening, measured from the reference spines
+       (body lightness 24% → 27% top to bottom) */
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--tint) 88%, #000),
+      var(--tint) 35%,
+      color-mix(in srgb, var(--tint) 90%, #fff)
+    ),
     linear-gradient(
       to right,
       color-mix(in srgb, var(--tint) 68%, #000),
