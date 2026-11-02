@@ -983,14 +983,16 @@ input[type='range'].scrub:disabled {
   backface-visibility: hidden;
 }
 
-/* the full cover, parallel to the wrapper plane, half a thickness forward */
+/* the full cover, flush with the spine's FRONT edge (translateZ = full
+   thickness) — at half thickness it receded into a gutter behind the spine,
+   which occluded the cover's near strip and read as the text being cut */
 .book-cover {
   inset: 0;
   border-radius: 3px 8px 8px 3px;
   overflow: hidden;
   background: var(--book-body);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
-  transform: translateZ(calc(var(--spine-w) / 2));
+  transform: translateZ(var(--spine-w));
 }
 .book-img {
   width: 100%;
@@ -1029,11 +1031,12 @@ input[type='range'].scrub:disabled {
   opacity: 0.8;
 }
 
-/* progress bookmark hanging down the presented cover */
+/* progress bookmark hanging down the presented cover — pinned to the outer
+   top corner so it never slices through the centered cover title */
 .book-ribbon {
   position: absolute;
   top: 0;
-  left: 62%;
+  left: 91%;
   width: 5%;
   min-width: 5px;
   background: var(--accent);
@@ -1132,14 +1135,16 @@ html[data-anim='on'] .book-band {
   mix-blend-mode: soft-light;
 }
 
-/* the spine: left face of the box, perpendicular, thickness-centered */
+/* the spine: left face of the box, perpendicular at the hinge — no
+   translateZ, so it spans the thickness exactly and its front edge meets
+   the cover plane at the corner */
 .book-spine {
   left: 0;
   bottom: 0;
   width: var(--spine-w);
   height: var(--bh);
   transform-origin: 0% 50%;
-  transform: translateZ(calc(var(--spine-w) / 2)) rotateY(-90deg);
+  transform: rotateY(-90deg);
   border-radius: 3px 0 0 3px;
   background:
     /* fine horizontal ridges — cloth weave catching the light */
@@ -1212,24 +1217,26 @@ html[data-anim='on'] .book-band {
   bottom: calc(var(--bh) - var(--spine-w) / 2);
   width: var(--cover-w);
   height: var(--spine-w);
-  transform: rotateX(90deg);
+  transform: translateZ(calc(var(--spine-w) / 2)) rotateX(90deg);
 }
-/* mirror of the top face about the box centerline */
+/* mirror of the top face about the box centerline — shifted forward so the
+   page block spans the full thickness between spine and cover planes */
 .book-bottom {
   left: 0;
   bottom: calc(var(--spine-w) / -2);
   width: var(--cover-w);
   height: var(--spine-w);
-  transform: rotateX(-90deg);
+  transform: translateZ(calc(var(--spine-w) / 2)) rotateX(-90deg);
 }
-/* mirror of the spine about the box center — pages at the fore-edge */
+/* mirror of the spine about the box — pages at the fore-edge, flush at the
+   cover's right edge */
 .book-fore {
   left: calc(var(--cover-w) - var(--spine-w));
   bottom: 0;
   width: var(--spine-w);
   height: var(--bh);
   transform-origin: 100% 50%;
-  transform: translateZ(calc(var(--spine-w) / 2)) rotateY(90deg);
+  transform: rotateY(90deg);
 }
 .book-scene.is-generating .book-top,
 .book-scene.is-generating .book-bottom,
@@ -1270,18 +1277,17 @@ html[data-anim='on'] .book-band {
      camera with the cover — an origin stuck at the spine keystones it into
      a trapezoid — and lifts the scene for the transient overlap while the
      slot is still opening: scenes are separate 3D contexts, so stacking
-     order IS the depth between books. Crack angle 34°: steep enough to
-     read as pulled out, shallow enough that the cover's title stays
-     legible (at 56° the text compressed to an unreadable sliver). Slot
-     width = spine + the cover's projected width (cos 34° ≈ 0.83, a hair
-     of margin) */
+     order IS the depth between books. Crack 46° with an exact-fit slot
+     (cos 46° ≈ 0.69): enough turn to read as pulled out, tight enough that
+     the row parts by ~15px instead of opening a sparse gap, and the title
+     still projects ~70% width — legible */
   .book-scene:hover:not(.is-presented) {
-    width: calc(var(--spine-w) + var(--cover-w) * 0.84);
+    width: calc(var(--spine-w) + var(--cover-w) * 0.7);
     z-index: 5;
-    perspective-origin: calc(var(--cover-w) * 0.42) calc(var(--bh) * 0.5);
+    perspective-origin: calc(var(--cover-w) * 0.35) calc(var(--bh) * 0.5);
   }
   .book-scene:hover:not(.is-presented) .book {
-    transform: rotateY(34deg) translateY(-3px);
+    transform: rotateY(46deg) translateY(-3px);
   }
   .book-scene:hover:not(.is-presented) .book-spine {
     filter: brightness(1.1);
@@ -1290,7 +1296,7 @@ html[data-anim='on'] .book-band {
      stays grounded instead of floating on a spine-width blob */
   .book-scene:hover:not(.is-presented) .book-shadow {
     left: 6%;
-    right: calc(-1 * var(--cover-w) * 0.82);
+    right: calc(-1 * var(--cover-w) * 0.68);
     transform: scale(1, 1.15);
     opacity: 0.75;
   }
