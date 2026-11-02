@@ -1055,14 +1055,16 @@ input[type='range'].scrub:disabled {
 .book-scene::before {
   content: '';
   position: absolute;
-  inset: -5% -3%;
+  inset: -9% -7%;
   z-index: 0;
-  border-radius: 20px;
-  background: radial-gradient(
-    closest-side,
-    color-mix(in srgb, var(--accent) 30%, transparent),
-    transparent 78%
-  );
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      closest-side,
+      color-mix(in srgb, var(--accent) 62%, transparent),
+      color-mix(in srgb, var(--accent) 26%, transparent) 48%,
+      transparent 84%
+    );
   pointer-events: none;
   opacity: 0;
   transition: opacity 360ms ease 340ms; /* ignites as the hop settles */
@@ -1079,8 +1081,16 @@ html[data-anim='on'] .book-scene.is-presented::before {
     opacity: 1;
   }
   50% {
-    opacity: 0.72;
+    opacity: 0.8;
   }
+}
+/* edge-light on the presented cover itself — the halo behind plus a warm
+   rim on the face reads unmistakably selected */
+.book-scene.is-presented .book-cover {
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 0 32px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .book-sheen {
@@ -1259,11 +1269,12 @@ html[data-anim='on'] .book-scene.is-presented::before {
   /* the shadow widens to the angled cover's projected footprint — the book
      stays grounded instead of floating on a spine-width blob */
   .book-scene:hover:not(.is-presented) .book-shadow {
-    left: 6%;
-    right: calc(-1 * var(--cover-w) * 0.66);
-    transform: translateY(6px) scale(1.05, 1.3);
-    opacity: 0.95;
-    filter: blur(5px);
+    left: 5%;
+    right: calc(-1 * var(--cover-w) * 0.7);
+    transform: translateY(9px) scale(1.12, 1.5);
+    opacity: 1;
+    filter: blur(7px);
+    background: radial-gradient(closest-side, rgb(0 0 0 / 0.58), transparent 72%);
   }
 }
 .book-scene.is-presented .book {

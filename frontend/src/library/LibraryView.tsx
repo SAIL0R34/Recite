@@ -6,7 +6,7 @@ import { useLibraryStore } from '../stores/libraryStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useFlightStore } from '../stores/flightStore'
 import { startBookFlight } from '../motion'
-import { praise } from '../PraiseConfetti'
+import { praiseAt } from '../PraiseConfetti'
 import { useEndedSession } from '../readingSession'
 import { sectionBooks } from './shelf'
 import Bookcase from './Bookcase'
@@ -100,7 +100,9 @@ export default function LibraryView() {
         setLaunchingId(book.id)
         requestAnimationFrame(() => {
           const src = coverEl(book.id) ?? null
-          praise(src) // confetti as the book lifts off to be read
+          // confetti blooms at screen center — where the flying cover is
+          // headed — not at the book's slot on the shelf
+          praiseAt(window.innerWidth / 2, window.innerHeight * 0.45)
           if (!startBookFlight(src, book)) go()
           setLaunchingId(null)
         })
