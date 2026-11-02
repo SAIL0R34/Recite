@@ -15,6 +15,12 @@ import {
 export type TickListener = (globalMs: number) => void
 export type StateListener = (s: { playing: boolean; sectionIdx: number }) => void
 
+/** Minimal local shape — TS DOM libs before 5.9 ship no WakeLockSentinel. */
+interface WakeLockSentinelLike {
+  release(): Promise<void>
+  released?: boolean
+}
+
 const PRELOAD_AHEAD_MS = 30_000
 
 class PlayerEngine {
@@ -30,6 +36,11 @@ class PlayerEngine {
   private _rate = 1
   // partial section ended: resume there once more audio has landed
   private _wait: { section: number; playedMs: number } | null = null
+  // sleep-timer fade (a generation token lets cancelFade abort mid-ramp)
+  private _fadeTimer: ReturnType<typeof setInterval> | null = null
+  private _fadeGen = 0
+  private wakeSentinel: WakeLockSentinelLike | null = null
+  private lastPosPush = 0
 
   // ---- subscriptions -----------------------------------------------
 
@@ -59,12 +70,14 @@ class PlayerEngine {
 
   load(bookId: string, manifest: Manifest): void {
     this.stopLoop()
+    this.cancelFade()
     if (this.audio) {
       this.audio.pause()
       this.audio.removeAttribute('src')
       this.audio.load()
       this.audio = null
     }
+    this.releaseWakeLock()
     this.preloadHref = null
     this._wait = null
     this.bookId = bookId
@@ -124,7 +137,9 @@ class PlayerEngine {
 
   /** THE seek path. Global ms → {section, offset} → (maybe) swap src →
    * set currentTime. If the target section isn't ready, falls back to the
-   * nearest ready section so playback is never dead-ended. */
+   * nearest ready section so playback is never dead-ended. A seek never
+   * interrupts narration: swapping src stops a playing element, so the
+   * playing state is captured first and re-established after the jump. */
   async seekToGlobalMs(ms: number): Promise<boolean> {
     const tl = this.tl
     if (!tl || !this.manifest || tl.totalMs <= 0) return false
@@ -139,6 +154,7 @@ class PlayerEngine {
     }
     const sec = this.sectionOf(pos.section)
     if (!sec) return false
+    const wasPlaying = this.playing // loadSrc may swap src and stop it
     if (!(await this.loadSrc(sec))) return false
     const dur = this.audio!.duration || sec.duration_ms / 1000
     this.audio!.currentTime = Math.min(
@@ -146,9 +162,29 @@ class PlayerEngine {
       Math.max(0, dur - 0.05),
     )
     this._sectionIdx = pos.section
+    if (wasPlaying) {
+      try {
+        await this.audio!.play()
+      } catch {
+        /* autoplay policy / interrupted */
+      }
+    }
     this.emitState()
     this.emitTick()
     return true
+  }
+
+  /** Next/prev READY section boundary (the J/L semantics), preserving the
+   * playing state — also what the OS next/previous-track handlers drive. */
+  nextSection(): Promise<boolean> {
+    const n = this.nextReadyAfter(this._sectionIdx)
+    const e = n === null ? null : this.entry(n)
+    return e ? this.seekToGlobalMs(e.startMs) : Promise.resolve(false)
+  }
+  prevSection(): Promise<boolean> {
+    const p = this.prevReadyBefore(this._sectionIdx)
+    const e = this.entry(p ?? this._sectionIdx) // none before → restart current
+    return e ? this.seekToGlobalMs(e.startMs) : Promise.resolve(false)
   }
 
   /** ±ms from the current global position (the one call site for ±10s). */
@@ -176,7 +212,10 @@ class PlayerEngine {
         : undefined
     if (!ms) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const setH = (action: string, fn: () => void) => {
+    const setH = (
+      action: string,
+      fn: (d?: { seekTime?: number | null; fastSeek?: boolean | null }) => void,
+    ) => {
       try {
         ;(ms as any).setActionHandler(action, fn)
       } catch {
@@ -187,18 +226,66 @@ class PlayerEngine {
     setH('pause', () => this.pause())
     setH('seekbackward', () => void this.seekRelative(-10_000))
     setH('seekforward', () => void this.seekRelative(10_000))
+    // The OS scrubber speaks SECTION-relative seconds — the <audio> src is
+    // one MP3 per section — so resolve on that axis and clamp to the entry:
+    // an overshoot must not spill into the next section.
+    setH('seekto', (d) => {
+      const t = d?.seekTime
+      if (typeof t !== 'number' || !Number.isFinite(t)) return
+      const e = this.entry(this._sectionIdx)
+      if (!e) return
+      void this.seekToGlobalMs(Math.min(e.startMs + t * 1000, e.endMs))
+    })
+    setH('nexttrack', () => void this.nextSection())
+    setH('previoustrack', () => void this.prevSection())
   }
 
-  setMediaTitle(title: string, artist: string): void {
+  setMediaTitle(title: string, artist: string, artworkSrc?: string): void {
     const ms =
       typeof navigator !== 'undefined'
         ? (navigator as unknown as { mediaSession?: MediaSession }).mediaSession
         : undefined
     if (!ms || typeof MediaMetadata === 'undefined') return
     try {
-      ms.metadata = new MediaMetadata({ title, artist, album: 'Recite' })
+      ms.metadata = new MediaMetadata({
+        title,
+        artist,
+        album: 'Recite',
+        // type omitted: cover.jpg vs cover.png is per-book unknown, and
+        // both sizes and type are optional hints the UA may ignore
+        artwork: artworkSrc ? [{ src: artworkSrc, sizes: '512x512' }] : undefined,
+      })
     } catch {
       /* ignore */
+    }
+  }
+
+  /** OS media UI position — section-relative, matching the audio src (for
+   *  a still-synthesizing section, the partial prefix is the src, and its
+   *  audio.duration is exactly what we publish). */
+  private pushPositionState(): void {
+    const ms =
+      typeof navigator !== 'undefined'
+        ? (navigator as unknown as { mediaSession?: MediaSession }).mediaSession
+        : undefined
+    const a = this.audio
+    if (!ms || typeof ms.setPositionState !== 'function' || !a) return
+    const e = this.entry(this._sectionIdx)
+    const duration =
+      Number.isFinite(a.duration) && a.duration > 0
+        ? a.duration
+        : e
+          ? e.durationMs / 1000
+          : 0
+    if (!(duration > 0)) return
+    try {
+      ms.setPositionState({
+        duration,
+        position: Math.min(a.currentTime, duration),
+        playbackRate: this._rate,
+      })
+    } catch {
+      /* invalid state / unsupported */
     }
   }
 
@@ -266,11 +353,103 @@ class PlayerEngine {
     if (this.audio) return this.audio
     const a = new Audio()
     a.preload = 'auto'
-    a.addEventListener('ended', () => this.handleEnded())
-    a.addEventListener('play', () => this.emitState())
-    a.addEventListener('pause', () => this.emitState())
+    a.addEventListener('ended', () => {
+      this.releaseWakeLock()
+      this.handleEnded()
+    })
+    a.addEventListener('play', () => {
+      void this.acquireWakeLock()
+      this.emitState()
+    })
+    a.addEventListener('pause', () => {
+      this.releaseWakeLock()
+      this.emitState()
+    })
+    // Wake locks die with document visibility; take it back when we return.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.playing)
+        void this.acquireWakeLock()
+    })
+    window.addEventListener('pagehide', () => this.releaseWakeLock())
     this.audio = a
     return a
+  }
+
+  /** Keep the screen awake while narrating — read-along means eyes on the
+   *  page. No-op where unsupported (request rejects when the document is
+   *  hidden; visibilitychange retries). */
+  private async acquireWakeLock(): Promise<void> {
+    if (this.wakeSentinel || typeof navigator === 'undefined') return
+    const wl = (
+      navigator as unknown as {
+        wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinelLike> }
+      }
+    ).wakeLock
+    if (!wl) return
+    try {
+      this.wakeSentinel = await wl.request('screen')
+    } catch {
+      this.wakeSentinel = null
+    }
+  }
+
+  private releaseWakeLock(): void {
+    const s = this.wakeSentinel
+    this.wakeSentinel = null
+    if (s) void s.release().catch(() => undefined)
+  }
+
+  /** Gentle linear ramp to silence over fadeMs, then pause and restore
+   *  volume — the sleep timer's exit. An interval, not rAF: hidden tabs
+   *  stop rAF entirely while a throttled interval still lands. Every exit
+   *  path restores volume so the next manual play is never silent. */
+  fadeOutAndPause(fadeMs: number): Promise<void> {
+    this.cancelFade()
+    const a = this.audio
+    if (!a || a.paused) {
+      if (a) a.volume = 1
+      return Promise.resolve()
+    }
+    const gen = ++this._fadeGen
+    const t0 = performance.now()
+    return new Promise<void>((resolve) => {
+      const step = () => {
+        if (gen !== this._fadeGen || !this.audio) {
+          resolve()
+          return
+        }
+        const el = this.audio
+        if (el.paused) {
+          el.volume = 1
+          resolve()
+          return
+        }
+        const k = Math.min(1, (performance.now() - t0) / Math.max(1, fadeMs))
+        el.volume = Math.max(0, 1 - k)
+        if (k >= 1) {
+          el.pause()
+          el.volume = 1
+          resolve()
+        }
+      }
+      this._fadeTimer = setInterval(step, 100)
+      step()
+    }).finally(() => {
+      if (this._fadeTimer) {
+        clearInterval(this._fadeTimer)
+        this._fadeTimer = null
+      }
+    })
+  }
+
+  /** Abort a running fade at full volume (the sleep timer was cancelled). */
+  cancelFade(): void {
+    this._fadeGen++
+    if (this._fadeTimer) {
+      clearInterval(this._fadeTimer)
+      this._fadeTimer = null
+    }
+    if (this.audio) this.audio.volume = 1
   }
 
   /** Set src iff it differs; wait for loadedmetadata so currentTime works. */
@@ -312,6 +491,7 @@ class PlayerEngine {
     } catch {
       /* ignore */
     }
+    this.pushPositionState() // the OS UI's progress speed follows the rate
   }
 
   private handleEnded(): void {
@@ -371,6 +551,11 @@ class PlayerEngine {
       const g = e.startMs + a.currentTime * 1000
       for (const l of this.ticks) l(g)
       this.maybePreload(g)
+      // OS media UI position at ~1 Hz — plenty for a lock-screen scrubber
+      if (!a.paused && performance.now() - this.lastPosPush > 1000) {
+        this.lastPosPush = performance.now()
+        this.pushPositionState()
+      }
     }
     this.startLoop()
   }
@@ -389,6 +574,8 @@ class PlayerEngine {
   private emitState(): void {
     const s = { playing: this.playing, sectionIdx: this._sectionIdx }
     for (const l of this.states) l(s)
+    // play/pause/seek/section transitions all emit — keep the OS UI honest
+    this.pushPositionState()
   }
 }
 

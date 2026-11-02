@@ -2,6 +2,7 @@ import { requestGeneration } from '../api/client'
 import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import SpeedPopover from './SpeedPopover'
+import SleepPopover from './SleepPopover'
 import type { Timeline } from '../player/timeline'
 import { globalToReady } from '../player/timeline'
 
@@ -177,6 +178,7 @@ export default function TransportBar({
         </span>
         <div className="util-cluster shrink-0">
           <SpeedPopover rate={rate} />
+          <SleepPopover />
           <button
             className="btn btn-ghost"
             onClick={onToggleBookmarks}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { BookDocument, Manifest, Progress } from '../types'
 import {
+  coverUrl,
   createBookmark,
   getDocument,
   getManifest,
@@ -16,14 +17,23 @@ import { useLibraryStore } from '../stores/libraryStore'
 import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useHighlightStore } from '../stores/highlightStore'
+import { useSleepStore } from '../stores/sleepStore'
 import { engine } from '../player/engine'
-import { beginReadingSession, endReadingSession, markReading } from '../readingSession'
+import {
+  beginReadingSession,
+  endReadingSession,
+  markReading,
+  shouldShowPausePraise,
+  sittingMs,
+  takePausePraiseSuppressed,
+} from '../readingSession'
 import TextPane from './TextPane'
 import TransportBar from './TransportBar'
 import SearchPopover from './SearchPopover'
 import ChapterMenu from './ChapterMenu'
 import BookmarkDrawer from './BookmarkDrawer'
 import AppearancePanel from './AppearancePanel'
+import PausePraise from './PausePraise'
 
 export default function ReaderView() {
   const { id } = useParams<{ id: string }>()
@@ -311,8 +321,53 @@ export default function ReaderView() {
       engine.setMediaTitle(
         doc.title,
         doc.author || book?.author || 'Recite',
+        coverUrl(bookId),
       )
-  }, [doc, book])
+  }, [doc, book, bookId])
+
+  // ---- pause praise ----------------------------------------------------------
+  // A real pause after a real stretch of reading gets the compact card +
+  // one gentle confetti pop. The 1.2 s confirmation matters: cross-section
+  // seeks and section rollovers briefly report playing=false while the
+  // audio src swaps — those aren't pauses and must not celebrate.
+  const [pausePraiseMs, setPausePraiseMs] = useState<number | null>(null)
+  const dismissPraise = useCallback(() => setPausePraiseMs(null), [])
+  useEffect(() => {
+    let confirmTimer: ReturnType<typeof setTimeout> | null = null
+    let wasPlaying = false
+    let lastShownAt: number | null = null
+    const off = engine.onState(({ playing }) => {
+      if (playing) {
+        if (confirmTimer) clearTimeout(confirmTimer)
+        confirmTimer = null
+        setPausePraiseMs(null) // resumed — no lingering card
+        wasPlaying = true
+        return
+      }
+      const was = wasPlaying
+      wasPlaying = false
+      if (!was) return
+      if (!confirmTimer)
+        confirmTimer = setTimeout(() => {
+          confirmTimer = null
+          if (engine.playing) return
+          if (takePausePraiseSuppressed()) return // the sleep timer's lullaby
+          const ms = sittingMs()
+          if (!shouldShowPausePraise(ms, lastShownAt, Date.now())) return
+          lastShownAt = Date.now()
+          setPausePraiseMs(ms)
+        }, 1200)
+    })
+    return () => {
+      off()
+      if (confirmTimer) clearTimeout(confirmTimer)
+    }
+  }, [])
+
+  // ---- sleep timer lifecycle -------------------------------------------------
+  // The timer belongs to this sitting: leaving the reader (or switching
+  // books) disarms it silently.
+  useEffect(() => () => useSleepStore.getState().dispose(), [bookId])
 
   // ---- keyboard ------------------------------------------------------------
   // paged mode: bare arrows flip pages (Shift keeps the ±60 s seek);
@@ -387,6 +442,12 @@ export default function ReaderView() {
         case 'F':
           st.setFollow(!st.followMode)
           break
+        case 'z':
+        case 'Z':
+          // the popover lives in the auto-hiding bar — bring it into view
+          pokeBar()
+          useSleepStore.getState().toggleMenu()
+          break
         case '/':
           e.preventDefault()
           setSearchOpen(true)
@@ -395,6 +456,7 @@ export default function ReaderView() {
           setDrawerOpen(false)
           setAppearanceOpen(false)
           setSearchOpen(false)
+          useSleepStore.getState().setMenuOpen(false)
           break
       }
     }
@@ -500,6 +562,11 @@ export default function ReaderView() {
             modelLoading={modelLoading}
           />
         </div>
+      )}
+
+      {/* the pause card — above the transport, never blocking it */}
+      {pausePraiseMs !== null && doc && (
+        <PausePraise ms={pausePraiseMs} title={doc.title} onDismiss={dismissPraise} />
       )}
 
       {/* touch devices have no hover zone — give them an explicit reveal

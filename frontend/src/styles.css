@@ -1766,6 +1766,59 @@ html[data-anim='on'] .session-praise-card {
   color: var(--muted);
 }
 
+/* -- pause praise (in-reader, non-blocking) ---------------------------------
+   The pause card: same paper recipe as the session card, compact, and
+   deliberately NOT modal — no backdrop, no pointer-blocking overlay. */
+.pause-praise {
+  position: fixed;
+  left: 50%;
+  bottom: 132px; /* above the transport shell */
+  transform: translateX(-50%);
+  /* above confetti (58) and toasts (60), below the session card (62) —
+     the card reads in front of its own burst */
+  z-index: 61;
+  cursor: pointer;
+  animation: fade-in 200ms ease-out;
+}
+.pause-praise-card {
+  position: relative;
+  max-width: min(88vw, 380px);
+  padding: 0.85rem 1.5rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--hairline);
+  background: var(--paper-raised);
+  box-shadow:
+    0 2px 0 var(--hairline),
+    0 18px 40px rgb(0 0 0 / 0.22);
+  text-align: center;
+}
+.pause-praise-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--grain);
+  background-size: 90px;
+  mix-blend-mode: multiply;
+  opacity: 0.25;
+  pointer-events: none;
+}
+html[data-anim='on'] .pause-praise-card {
+  animation: praise-card-in 460ms var(--ease-spring);
+}
+.pause-praise-duration {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 6px 0 2px;
+}
+.pause-praise-book {
+  margin: 0;
+  font-style: italic;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* ---- the ledger (reading analytics) --------------------------------------
    Single-hue marks (var(--chart-mark), dataviz-validated per surface);
    text in ink tokens; recessive hairline tracks; per-mark hover tooltips. */

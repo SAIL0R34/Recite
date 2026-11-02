@@ -88,3 +88,43 @@ export function formatDuration(ms: number): string {
   if (h === 0) return `${m}m`
   return `${h}h ${String(m).padStart(2, '0')}m`
 }
+
+/** Active reading time of the sitting so far — the pause card's number.
+ *  Correct regardless of subscriber ordering: when the sibling onState
+ *  handler closes the playing interval into activeMs, this reads the same
+ *  total through a null interval. */
+export function sittingMs(): number {
+  return activeMs + (playingSince !== null ? Date.now() - playingSince : 0)
+}
+
+// The sleep timer's stop is a lullaby, not an achievement — the pause-praise
+// wiring checks (and consumes) this one-shot flag instead of throwing confetti.
+let suppressPausePraise = false
+export function suppressNextPausePraise(): void {
+  suppressPausePraise = true
+}
+/** Read-and-clear: the suppression covers exactly one pause. */
+export function takePausePraiseSuppressed(): boolean {
+  const v = suppressPausePraise
+  suppressPausePraise = false
+  return v
+}
+export function clearPausePraiseSuppression(): void {
+  suppressPausePraise = false
+}
+
+/** No second card within this window of the last one. */
+export const PAUSE_PRAISE_COOLDOWN_MS = 60_000
+
+/** Threshold + cooldown for the pause card. Suppression is deliberately
+ *  the caller's concern, keeping this pure. */
+export function shouldShowPausePraise(
+  sitting: number,
+  lastShownAt: number | null,
+  now: number,
+): boolean {
+  return (
+    sitting >= MIN_CELEBRATE_MS &&
+    (lastShownAt === null || now - lastShownAt >= PAUSE_PRAISE_COOLDOWN_MS)
+  )
+}
