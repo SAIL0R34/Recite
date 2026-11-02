@@ -17,7 +17,7 @@ import { usePlayerStore } from '../stores/playerStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useHighlightStore } from '../stores/highlightStore'
 import { engine } from '../player/engine'
-import { beginReadingSession, endReadingSession } from '../readingSession'
+import { beginReadingSession, endReadingSession, markReading } from '../readingSession'
 import TextPane from './TextPane'
 import TransportBar from './TransportBar'
 import SearchPopover from './SearchPopover'
@@ -280,11 +280,15 @@ export default function ReaderView() {
       // click-to-seek or pause position survives a refresh
       if (dirtyRef.current) void save()
     }, 2000)
-    // save on the playing → paused transition (covers pause + ended)
+    // save on the playing → paused transition (covers pause + ended);
+    // every transition also feeds the sitting's active-time accumulator —
+    // hours read is measured by narration actually running, not by the
+    // page sitting open
     let wasPlaying = false
     const offState = engine.onState(({ playing }) => {
       if (wasPlaying && !playing) void save()
       wasPlaying = playing
+      markReading(playing)
     })
     const leave = () => {
       const p = usePlayerStore.getState().currentProgress()

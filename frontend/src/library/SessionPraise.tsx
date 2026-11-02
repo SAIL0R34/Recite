@@ -10,8 +10,9 @@ interface SessionPraiseProps {
 
 /**
  * The close celebration: returning from a real sitting lands on this paper
- * card — "You read for 1h 12m." — under a three-volley confetti crown.
- * Longer sittings throw wider. Dismiss on click, Escape, or six quiet
+ * card — "You read for 1h 12m." — with a single slow confetti burst behind
+ * it (the card paints above the confetti layer). The duration is active
+ * narration time, not wall-clock. Dismiss on click, Escape, or six quiet
  * seconds.
  */
 export default function SessionPraise({ session, onDone }: SessionPraiseProps) {
@@ -27,13 +28,6 @@ export default function SessionPraise({ session, onDone }: SessionPraiseProps) {
         if (!el) return
         const r = el.getBoundingClientRect()
         praiseAt(r.left + r.width / 2, r.top + 18, intensity)
-        // a third volley for the finishing flourish
-        timers.push(
-          setTimeout(
-            () => praiseAt(r.left + r.width / 2 + 30, r.top + 30, intensity),
-            520,
-          ),
-        )
       }, 360),
     )
     timers.push(setTimeout(onDone, 6000))

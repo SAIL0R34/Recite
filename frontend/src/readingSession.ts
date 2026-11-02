@@ -25,19 +25,45 @@ interface EndedState {
 export const useEndedSession = create<EndedState>(() => ({ ended: null }))
 
 let current: { bookId: string; title: string; start: number } | null = null
+/** active narration time — a sitting is measured by speech progression
+ *  (playback running), not by how long the page sat open. */
+let activeMs = 0
+let playingSince: number | null = null
+let wasPlaying = false
+
+/** Called on every play/pause/stop transition; opens and closes the
+ *  playing interval that the sitting's duration accumulates. */
+export function markReading(playing: boolean): void {
+  wasPlaying = playing
+  if (playing && current && playingSince === null) {
+    playingSince = Date.now()
+  } else if (!playing && playingSince !== null) {
+    activeMs += Date.now() - playingSince
+    playingSince = null
+  }
+}
 
 export function beginReadingSession(bookId: string, title: string): void {
   // close any dangling sitting (rapid book → book navigation)
   endReadingSession()
   current = { bookId, title, start: Date.now() }
+  // playback already running into the new book (book → book navigation
+  // while playing) — open a fresh interval so it counts
+  if (wasPlaying) playingSince = Date.now()
 }
 
 export function endReadingSession(): EndedSession | null {
   if (!current) return null
+  // close any open playing interval into the total
+  if (playingSince !== null) {
+    activeMs += Date.now() - playingSince
+    playingSince = null
+  }
   const { bookId, title, start } = current
   current = null
-  const now = Date.now()
-  const s: EndedSession = { bookId, title, startedMs: start, ms: now - start }
+  const ms = activeMs
+  activeMs = 0
+  const s: EndedSession = { bookId, title, startedMs: start, ms }
   if (s.ms >= 1000) sendSessionBeacon(s)
   if (s.ms >= MIN_CELEBRATE_MS) useEndedSession.setState({ ended: s })
   return s

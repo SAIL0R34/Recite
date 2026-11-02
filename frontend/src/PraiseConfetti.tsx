@@ -8,13 +8,13 @@ import { animOK } from './motion'
  * Confetti overlay for reading celebrations — paper, gilt and crimson bits
  * in the theme palette, festive but still editorial. The book kicks them up
  * as it lifts off. Fixed-positioned at App level so a burst outlives the
- * route change when the flight is off and navigation is instant. Each
- * praise() fires two volleys; longer sittings throw wider and thicker.
- * Every burst renders as its own layer (see praiseStore) so volleys
- * overlap instead of replacing each other.
+ * route change when the flight is off and navigation is instant. One slow
+ * burst per celebration (no repeat volleys); longer sittings throw wider
+ * and thicker. Every burst renders as its own layer (see praiseStore) so
+ * overlapping celebrations never replace each other.
  */
 
-const LIFE_MS = 2800
+const LIFE_MS = 4200
 
 /** Burst from the top-center of an element (a presented book's cover). */
 export function praise(el: Element | null | undefined, intensity = 1) {
@@ -25,10 +25,7 @@ export function praise(el: Element | null | undefined, intensity = 1) {
 
 export function praiseAt(x: number, y: number, intensity = 1) {
   if (!animOK()) return
-  const burst = usePraiseStore.getState().burst
-  burst(x, y, intensity)
-  // second volley, jittered — the "again!" of a proper celebration
-  setTimeout(() => burst(x + (Math.random() - 0.5) * 60, y + 8, intensity), 240)
+  usePraiseStore.getState().burst(x, y, intensity)
 }
 
 /** Deterministic per-index pseudo-random in [0, 1) — stable across renders. */
@@ -49,8 +46,8 @@ function carrierVars(i: number, intensity: number): CSSProperties {
   return {
     '--dx': `${Math.cos(ang) * dist}px`,
     '--wind': `${(rnd(i, 9) - 0.5) * 46}px`,
-    '--dur': `${Math.round(1500 + rnd(i, 5) * 700)}ms`,
-    '--del': `${Math.round(rnd(i, 6) * 260)}ms`,
+    '--dur': `${Math.round(2800 + rnd(i, 5) * 800)}ms`,
+    '--del': `${Math.round(rnd(i, 6) * 380)}ms`,
   } as CSSProperties
 }
 
@@ -63,11 +60,11 @@ function bitVars(i: number, intensity: number): CSSProperties {
   const dist = (70 + rnd(i, 2) * 130) * intensity
   return {
     '--dy': `${Math.sin(ang) * dist * 0.45 - 110 - rnd(i, 7) * 80}px`,
-    '--fall': `${Math.round((150 + rnd(i, 8) * 150) * Math.min(intensity, 1.6))}px`,
+    '--fall': `${Math.round((190 + rnd(i, 8) * 180) * Math.min(intensity, 1.6))}px`,
     '--r1': `${Math.round((rnd(i, 3) - 0.5) * 90)}deg`,
     '--r2': `${Math.round((rnd(i, 4) - 0.5) * 1440)}deg`,
-    '--dur': `${Math.round(1500 + rnd(i, 5) * 700)}ms`,
-    '--del': `${Math.round(rnd(i, 6) * 260)}ms`,
+    '--dur': `${Math.round(2800 + rnd(i, 5) * 800)}ms`,
+    '--del': `${Math.round(rnd(i, 6) * 380)}ms`,
   } as CSSProperties
 }
 

@@ -1605,7 +1605,7 @@ html[data-anim='on'] .shelf-label-copy {
 
 /* horizontal drift + wind + fade live on the carrier, linear throughout */
 html[data-anim='on'] .praise-carrier {
-  animation: praise-x var(--dur, 1800ms) linear var(--del, 0ms) forwards;
+  animation: praise-x var(--dur, 3000ms) linear var(--del, 0ms) forwards;
 }
 @keyframes praise-x {
   0% {
@@ -1627,8 +1627,8 @@ html[data-anim='on'] .praise-carrier {
 /* the vertical arc: pop, decelerating rise to apex, accelerating fall */
 html[data-anim='on'] .praise-bit {
   animation:
-    praise-rise var(--dur, 1800ms) var(--del, 0ms) forwards,
-    praise-tumble var(--dur, 1800ms) linear var(--del, 0ms) forwards;
+    praise-rise var(--dur, 3000ms) var(--del, 0ms) forwards,
+    praise-tumble var(--dur, 3000ms) linear var(--del, 0ms) forwards;
 }
 @keyframes praise-rise {
   0% {
@@ -1654,18 +1654,19 @@ html[data-anim='on'] .praise-bit {
 }
 
 /* paper flutter: ribbons turn edge-on about the vertical, squares about the
-   horizontal — reading as bits of paper, not colored chips */
+   horizontal — reading as bits of paper, not colored chips. Iterations are
+   capped so nothing loops; the layer dies before the wobble runs out */
 html[data-anim='on'] .praise-bit.ribbon {
   animation:
-    praise-rise var(--dur, 1800ms) var(--del, 0ms) forwards,
-    praise-tumble var(--dur, 1800ms) linear var(--del, 0ms) forwards,
-    flutter-x 640ms ease-in-out infinite;
+    praise-rise var(--dur, 3000ms) var(--del, 0ms) forwards,
+    praise-tumble var(--dur, 3000ms) linear var(--del, 0ms) forwards,
+    flutter-x 640ms ease-in-out 5;
 }
 html[data-anim='on'] .praise-bit.sq {
   animation:
-    praise-rise var(--dur, 1800ms) var(--del, 0ms) forwards,
-    praise-tumble var(--dur, 1800ms) linear var(--del, 0ms) forwards,
-    flutter-y 880ms ease-in-out infinite;
+    praise-rise var(--dur, 3000ms) var(--del, 0ms) forwards,
+    praise-tumble var(--dur, 3000ms) linear var(--del, 0ms) forwards,
+    flutter-y 880ms ease-in-out 4;
 }
 @keyframes flutter-x {
   0%,
@@ -1691,7 +1692,8 @@ html[data-anim='on'] .praise-bit.sq {
 .session-praise {
   position: fixed;
   inset: 0;
-  z-index: 55;
+  z-index: 62; /* above the confetti layer (58) and toasts (60) — the card
+                  reads in front of its own burst */
   display: grid;
   place-items: center;
   background: rgb(20 14 8 / 0.34);
