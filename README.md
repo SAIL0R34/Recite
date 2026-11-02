@@ -95,6 +95,47 @@ Delete it to reset the app. Every path is env-overridable:
 | `RECITE_TTS_WINDOW_CHUNKS` | `80` | audio kept ready past the cursor |
 | `RECITE_TTS_GRACE` | `480` | seconds out-of-window work stays queued |
 | `RECITE_FFMPEG` / `RECITE_FFPROBE` | from `PATH` | encoder binaries |
+| `RECITE_LLM_BASE_URL` | _(unset)_ | OpenAI-compatible chat endpoint for the LLM chunk planner (see below) |
+| `RECITE_LLM_API_KEY` | _(unset)_ | bearer token for that endpoint; leave unset for local Ollama / LM Studio |
+| `RECITE_LLM_MODEL` | _(unset)_ | model name, e.g. `gpt-4o-mini` or `qwen2.5:7b` |
+| `RECITE_LLM_TIMEOUT` | `60` | seconds per planner call |
+| `RECITE_LLM_MAX_FAILURES` | `3` | consecutive failures before the rest of an operation uses the heuristic |
+| `RECITE_TTS_BASE_URL` | _(unset)_ | OpenAI-compatible speech endpoint for remote synthesis (see below) |
+| `RECITE_TTS_API_KEY` | _(unset)_ | bearer token for that endpoint |
+| `RECITE_TTS_MODEL` | _(unset)_ | model name, e.g. `tts-1` |
+| `RECITE_TTS_VOICE` | `alloy` | voice for the remote engine (engine-specific; Kokoro voices do not exist remotely) |
+| `RECITE_TTS_TIMEOUT` | `120` | seconds per chunk synthesis |
+
+### External endpoints (opt-in)
+
+Recite is local-first: with the endpoint variables unset it makes **no
+network calls** and book text never leaves the machine. If you point it at
+external services, two things change:
+
+- **LLM chunk planner** (`RECITE_LLM_*`) — any OpenAI-compatible chat
+  endpoint (OpenAI, an OpenAI-compatible proxy, Ollama, LM Studio) chooses
+  where narration chunks break: semantic breathing points instead of the
+  punctuation heuristic. The model never rewrites text — it returns
+  sentence-index ranges, validated locally (coverage, char budgets,
+  paragraph walls) with the heuristic as a per-section fallback. The plan
+  is stored in `manifest.json` (`"planner": "llm:<model>"`), a book is
+  re-asked only when you explicitly re-chunk it (the ↺ button uses the
+  planner when one is configured; `?planner=heuristic` forces the rules),
+  and the startup re-chunk sweep never touches the endpoint. A base URL
+  with or without a trailing `/v1` both work.
+- **Remote TTS engine** (`RECITE_TTS_*`) — any OpenAI-compatible
+  `/v1/audio/speech` endpoint synthesizes instead of local Kokoro, which is
+  the speed lever: generation stops being bound to your CPU. Any failure
+  (timeout, 5xx, bad audio) falls back to local Kokoro for that chunk, and
+  the manifest stamps what actually ran (`remote:<model>`,
+  `remote:<model>+kokoro`, or the Kokoro version). Audio for existing
+  sections is never re-synthesized on an engine switch — remove and re-add
+  a book if you want it fully re-voiced.
+
+**When configured, the text of every book you ingest, re-chunk, or
+synthesize is sent to the endpoint you chose.** Keys live only in the
+environment — never in the database, and never served by the API (the
+status routes report `configured`/`model`/`base` only).
 
 ## Layout
 

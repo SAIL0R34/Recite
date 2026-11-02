@@ -30,6 +30,7 @@ sample-library/sample.epub     # copy of the bundled sample book (POST /sample)
 
 ```json
 { "engine": "kokoro-0.9.4", "voice": "af_heart", "alignment": "whisperx|interp",
+  "planner": "heuristic|llm:<model>", "rule_version": 2,
   "sections": [ { "idx": 0, "audio": "audio/section-000.mp3",
       "duration_ms": 512340, "status": "ready",
       "chunks": [ { "idx": 0, "section": 0, "para": 3,
@@ -37,6 +38,17 @@ sample-library/sample.epub     # copy of the bundled sample book (POST /sample)
           "global_start_ms": 0, "duration_ms": 8420, "status": "ready",
           "words": [ { "w": 0, "s": 120, "e": 240 } ] } ] } ] }
 ```
+
+- `engine` is stamped per generation: `kokoro-0.9.4`, or with a remote
+  speech endpoint configured `remote:<model>` / `remote:<model>+kokoro`
+  (mixed section). Audio reuse never keys on engine — switching engines
+  affects newly generated sections only.
+- `planner` records what planned the chunks; `rule_version` the chunker
+  rules they were planned under (stamped at ingest; the startup sweep
+  re-plans only older rule versions, and never via the LLM endpoint).
+- The LLM planner (opt-in, `RECITE_LLM_*`) only ever returns sentence-index
+  ranges — chunk text is always rebuilt from stored sentences, so the
+  `(para, sentence_range, text)` audio-reuse key stays trustworthy.
 
 - Section statuses: `pending → synthesizing → (aligning) → encoding → ready | failed`
 - Word `s`/`e`: ms **relative to the section file start**; `global_start_ms`:
@@ -59,6 +71,9 @@ sample-library/sample.epub     # copy of the bundled sample book (POST /sample)
 | `/api/sessions` | POST | `{book_id, started_at, ended_at, duration_s}` (epoch s) — beacon-written reading sitting; durations clamped to 0..12h, sub-second sittings ignored |
 | `/api/stats` | GET | `?days=14` (1..90): `{total_s, sessions, books_read, streak_days, daily[{date,seconds}], per_book[{book_id,title,author,format,percent,sec,n}], by_format, by_state}` |
 | `/api/settings` | GET/PUT | voice, theme, fontSize, lineHeight, fontFamily, highlightStyle, alignment, readingMode (scroll/paged), pageAnimations |
+| `/api/llm` | GET | chunk-planner endpoint status: `{configured, model, base}` — never the API key |
+| `/api/tts` | GET | remote-synthesis endpoint status: `{configured, model, base, voice}` — never the API key |
+| `/api/books/{id}/rechunk` | POST | `?planner=auto\|heuristic\|llm`: re-plan chunks, keeping audio whose `(para, sentence_range, text)` matches; stale slices reset their section to `pending` |
 | `/api/books/{id}/events` | GET SSE | `section {idx,status}`, `chunk {idx,chunk}`, `generation {done}`, `model {state:downloading|ready}` (once per cold cache) |
 | `/api/books/{id}/generate` | POST | `?boost=N&window=CHUNKS`: queue the audio window around section N — lane 1 = N+successor, lane 2 = forward until chunk budget; out-of-window queued work goes cold for `RECITE_TTS_GRACE` s, then releases (stays `pending`, nothing lost). `boost` also force-requeues a `failed` section |
 
