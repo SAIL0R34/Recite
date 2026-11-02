@@ -702,6 +702,8 @@ input[type='range'].scrub:disabled {
   .book-bob,
   .book-sheen,
   .book-top,
+  .book-bottom,
+  .book-fore,
   .book-band {
     animation: none !important;
     transition: none !important;
@@ -1188,13 +1190,14 @@ html[data-anim='on'] .book-band {
   box-shadow: 0 -1px rgb(0 0 0 / 0.18);
 }
 
-/* page-block top edge; warm gilt wash while narration generates */
-.book-top {
-  left: 0;
-  bottom: calc(var(--bh) - var(--spine-w) / 2);
-  width: var(--cover-w);
-  height: var(--spine-w);
-  transform: rotateX(90deg);
+/* page-block edges: top, bottom and fore-edge. The faces complete the box —
+   backface-visibility culls whichever the camera can't see (at rest and
+   settled-presented that's all of bottom/fore), so they cost nothing there,
+   but a mid-swing or overshooting angle shows cream page edges instead of
+   a see-through silhouette. Warm gilt wash while narration generates. */
+.book-top,
+.book-bottom,
+.book-fore {
   background:
     repeating-linear-gradient(
       to right,
@@ -1204,7 +1207,33 @@ html[data-anim='on'] .book-band {
     linear-gradient(to bottom, var(--paper-raised), var(--bg));
   border-radius: 2px;
 }
-.book-scene.is-generating .book-top {
+.book-top {
+  left: 0;
+  bottom: calc(var(--bh) - var(--spine-w) / 2);
+  width: var(--cover-w);
+  height: var(--spine-w);
+  transform: rotateX(90deg);
+}
+/* mirror of the top face about the box centerline */
+.book-bottom {
+  left: 0;
+  bottom: calc(var(--spine-w) / -2);
+  width: var(--cover-w);
+  height: var(--spine-w);
+  transform: rotateX(-90deg);
+}
+/* mirror of the spine about the box center — pages at the fore-edge */
+.book-fore {
+  left: calc(var(--cover-w) - var(--spine-w));
+  bottom: 0;
+  width: var(--spine-w);
+  height: var(--bh);
+  transform-origin: 100% 50%;
+  transform: translateZ(calc(var(--spine-w) / 2)) rotateY(90deg);
+}
+.book-scene.is-generating .book-top,
+.book-scene.is-generating .book-bottom,
+.book-scene.is-generating .book-fore {
   background:
     repeating-linear-gradient(
       to right,
@@ -1237,15 +1266,27 @@ html[data-anim='on'] .book-band {
 /* poses: rest spine-on (84°), hover cracks the cover open, presented faces
    you and steps forward */
 @media (hover: hover) {
+  /* the crack pans the camera with the cover — an origin stuck at the spine
+     keystones the angled cover into a trapezoid — and lifts the scene above
+     right-hand neighbors: scenes are separate 3D contexts, so stacking
+     order IS the depth between books */
+  .book-scene:hover:not(.is-presented) {
+    z-index: 5;
+    perspective-origin: calc(var(--cover-w) * 0.3) calc(var(--bh) * 0.5);
+  }
   .book-scene:hover:not(.is-presented) .book {
     transform: rotateY(56deg) translateY(-3px);
   }
   .book-scene:hover:not(.is-presented) .book-spine {
     filter: brightness(1.1);
   }
-  .book-scene:hover .book-shadow {
-    transform: scale(1.12, 1.2);
-    opacity: 0.9;
+  /* the shadow widens to the angled cover's projected footprint — the book
+     stays grounded instead of floating on a spine-width blob */
+  .book-scene:hover:not(.is-presented) .book-shadow {
+    left: 6%;
+    right: calc(-1 * var(--cover-w) * 0.56);
+    transform: scale(1, 1.15);
+    opacity: 0.75;
   }
 }
 .book-scene.is-presented .book {

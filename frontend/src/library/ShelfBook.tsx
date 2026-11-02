@@ -72,6 +72,10 @@ export default function ShelfBook({
           </span>
           {/* page-block top edge; warm gilt wash while narration generates */}
           <span className="book-face book-top" />
+          {/* page-block bottom + fore-edge — close the box so the mid-swing
+              wedge between spine and cover never reads hollow */}
+          <span className="book-face book-bottom" />
+          <span className="book-face book-fore" />
           {/* the full cover, swung open on presentation */}
           <span className="book-face book-cover">
             {imgOk ? (
