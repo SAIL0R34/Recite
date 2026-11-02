@@ -12,10 +12,10 @@ style. Nothing leaves your machine: synthesis runs locally via
 locally, and the only network traffic is the one-time model download.
 
 <p>
-  <img src="docs/screenshots/02-reader-karaoke.png" alt="Recite reader following along with Alice's Adventures in Wonderland, the spoken words highlighted mid-sentence" width="100%">
+  <img src="docs/screenshots/02-reader-karaoke.png" alt="The Recite reader following along with a book, the spoken word highlighted mid-sentence" width="100%">
 </p>
 <p>
-  <img src="docs/screenshots/01-library-sepia.png" alt="Recite library with four books and progress rings" width="49.5%">
+  <img src="docs/screenshots/01-library-sepia.png" alt="The Recite library — spines on a wooden shelf with progress ribbons" width="49.5%">
   <img src="docs/screenshots/04-reader-dark.png" alt="The same reader in the dark theme" width="49.5%">
 </p>
 
@@ -33,6 +33,10 @@ locally, and the only network traffic is the one-time model download.
 - **Reading tools** — bookmarks, four-color text highlights, ±10 s skips,
   speed control with pitch preservation, chapter jumps (`J`/`L`), and
   per-book resume.
+- **Listening comfort** — a sleep timer (minutes or end-of-section, with a
+  gentle fade-out, `Z`), OS media keys and lock-screen scrubbing with cover
+  art, and a screen that stays awake while narrating. Pausing after a real
+  stretch brings a quiet "you read for…" card with one confetti pop.
 - **Reader comfort** — sepia/light/dark themes, font family and size, line
   height, highlighter or underline styles.
 - **Live status** — section synthesis progress streams over SSE, so the
@@ -62,7 +66,21 @@ make run                # http://localhost:8744
 2. Open a book — the first sections synthesize ahead of your reading
    position while the rest generates in the background.
 3. Read along: the highlighted word tracks the audio; click any word or
-   section, scrub, or press `J`/`L` to jump chapters.
+   section, scrub, or press `J`/`L` to jump chapters. Drifting off?
+   `Z` arms the sleep timer.
+
+### Keyboard
+
+| Key | Action |
+| --- | --- |
+| `Space` | play / pause |
+| `←` / `→` | ±10 s — in paged mode, turn the page (`Shift` seeks ±60 s) |
+| `J` / `L` | previous / next ready section |
+| `B` | pin a bookmark at the playhead |
+| `F` | toggle follow-the-narration |
+| `/` | search the book |
+| `Z` | sleep timer |
+| `Esc` | close panels, re-shelve the presented book |
 
 Data lives under the data dir (default
 `~/Library/Application Support/recite/` on macOS: SQLite + per-book audio).
@@ -102,6 +120,10 @@ image-heavy scan) is pinned by deterministic generated fixtures — see
 - One MP3 per section; word timings are section-relative ms. Playback is a
   single `<audio>` element with one seek path — Tauri-wrap-ready (all URLs
   relative).
+- OS integration hangs off that one element: Media Session (lock-screen
+  scrubbing, media keys, cover art), a screen wake lock while narrating,
+  and a sleep timer that is nothing more than a volume ramp — none of it
+  touches the seek path.
 - Word timings come from WhisperX forced alignment when installed
   (`whisperx`, `ctranslate2`), otherwise pause-budget interpolation, which
   re-zeros every chunk.
