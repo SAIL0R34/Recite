@@ -39,14 +39,9 @@ export default function Bookcase({
     const root = rootRef.current
     if (!root) return
     const measure = () => {
-      // spine widths vary per book (slim novels, thick tomes) — estimate
-      // the row count from the average scene width plus a little safety,
-      // not from any single scene
-      const scenes = root.querySelectorAll<HTMLElement>('.book-scene')
-      if (!scenes.length) return
-      let total = 0
-      scenes.forEach((s) => (total += s.offsetWidth))
-      const slot = total / scenes.length + 4 + SHELF_GAP
+      const scene = root.querySelector<HTMLElement>('.book-scene')
+      if (!scene) return
+      const slot = scene.offsetWidth + SHELF_GAP
       if (slot > 0) {
         const n = Math.max(1, Math.floor((root.clientWidth + SHELF_GAP) / slot))
         setPerRow((prev) => (prev === n ? prev : n))

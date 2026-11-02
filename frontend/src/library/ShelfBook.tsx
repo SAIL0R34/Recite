@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { BookSummary } from '../types'
 import { coverUrl } from '../api/client'
-import { floatDelay, restTilt, spineScale, spineTint, spineWidth } from './shelf'
+import { floatDelay, restTilt, spineScale, spineTint } from './shelf'
 
 interface ShelfBookProps {
   book: BookSummary
@@ -40,7 +40,6 @@ export default function ShelfBook({
     '--float-delay': floatDelay(book.title),
     '--spine-scale': spineScale(book.title),
     '--rest-tilt': restTilt(book.title),
-    '--spine-w': `${spineWidth(book.title)}px`,
   } as CSSProperties
 
   return (
