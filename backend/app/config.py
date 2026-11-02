@@ -62,6 +62,15 @@ LLM_TIMEOUT_S = float(os.environ.get("RECITE_LLM_TIMEOUT", "60"))
 # to the heuristic without asking again
 LLM_MAX_FAILURES = int(os.environ.get("RECITE_LLM_MAX_FAILURES", "3"))
 
+# Speech endpoint (POST {base}/v1/audio/speech). When set, synthesis goes
+# there first and local Kokoro is the fallback; voice is engine-specific
+# (Kokoro voices do not exist remotely).
+TTS_BASE_URL = os.environ.get("RECITE_TTS_BASE_URL", "").rstrip("/")
+TTS_API_KEY = os.environ.get("RECITE_TTS_API_KEY", "")
+TTS_MODEL = os.environ.get("RECITE_TTS_MODEL", "")
+TTS_REMOTE_VOICE = os.environ.get("RECITE_TTS_VOICE", "alloy")
+TTS_REMOTE_TIMEOUT_S = float(os.environ.get("RECITE_TTS_TIMEOUT", "120"))
+
 # Frontend build dir (repo/../frontend/dist relative to this file's repo root)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, events
 from .api import (books, bookmarks, events_api, highlights, llm, progress,
-                  sessions, settings_api)
+                  sessions, settings_api, tts)
 from .db import db
 
 app = FastAPI(title="recite")
@@ -20,7 +20,7 @@ app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 for r in (books.router, progress.router, bookmarks.router, highlights.router,
           sessions.router, settings_api.router, events_api.router,
-          llm.router):
+          llm.router, tts.router):
     app.include_router(r)
 
 

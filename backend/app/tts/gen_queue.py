@@ -498,29 +498,53 @@ def _synth_pool() -> ThreadPoolExecutor:
 
 
 def _synth_one(book_id: str, section_idx: int, work_dir, chunk, voice):
-    """Synthesize one chunk to its wav. Kokoro failures retry once and then
-    degrade to estimated silence: one flaky chunk must not sink a chapter."""
-    from . import kokoro_service
+    """Synthesize one chunk to its wav. The remote engine (when configured)
+    is tried first with local Kokoro as its fallback; Kokoro failures retry
+    once and then degrade to estimated silence: one flaky chunk must not
+    sink a chapter. Returns (chunk, wav, duration_ms, engine_used) where
+    engine_used is "remote" | "local" | "none" (silence/empty)."""
+    from . import kokoro_service, remote_tts
     text = (chunk.get("text") or "").strip()
     cidx = chunk.get("idx") or 0
     wav = encode.chunk_wav_path(work_dir, cidx)
     audio = None
+    engine_used = "none"
     if text:
-        for attempt in (0, 1):
+        if remote_tts.remote_configured():
             try:
-                audio, sr = kokoro_service.synthesize(text, voice)
-                break
-            except kokoro_service.KokoroError as e:
-                log.warning("book %s sec %s chunk %s: %s",
-                            book_id, section_idx, cidx, e)
+                audio, sr = remote_tts.synthesize(text, voice)
+                engine_used = "remote"
+            except remote_tts.RemoteTtsError as e:
+                log.warning("book %s sec %s chunk %s remote tts: %s "
+                            "— falling back to local", book_id, section_idx,
+                            cidx, e)
         if audio is None:
-            audio = kokoro_service.silence(max(0.3, len(text.split()) * 0.35))
-            sr = kokoro_service.SAMPLE_RATE
+            for attempt in (0, 1):
+                try:
+                    audio, sr = kokoro_service.synthesize(text, voice)
+                    engine_used = "local"
+                    break
+                except kokoro_service.KokoroError as e:
+                    log.warning("book %s sec %s chunk %s: %s",
+                                book_id, section_idx, cidx, e)
+            if audio is None:
+                audio = kokoro_service.silence(max(0.3, len(text.split()) * 0.35))
+                sr = kokoro_service.SAMPLE_RATE
+                engine_used = "none"
     else:  # keep chunk/wav alignment even for an empty chunk
         sr = kokoro_service.SAMPLE_RATE
         audio = np.zeros(int(0.05 * sr), dtype=np.float32)
     encode.write_wav(wav, audio, sr)
-    return chunk, wav, encode.wav_duration_ms(wav)
+    return chunk, wav, encode.wav_duration_ms(wav), engine_used
+
+
+def _section_engine(remote_chunks: int, local_chunks: int) -> str:
+    """Manifest `engine` stamp for one section — honest about mixtures."""
+    if remote_chunks and local_chunks:
+        return f"remote:{config.TTS_MODEL}+kokoro"
+    if remote_chunks:
+        return f"remote:{config.TTS_MODEL}"
+    return engine()
 
 
 def _mark_chunks(book_id: str, section_idx: int, chunk_idxs: List[int]) -> None:
@@ -598,12 +622,18 @@ def generate_section(book_id: str, section_idx: int) -> None:
     # reader's cursor — the one they are waiting on — gets every lane.
     chunk_order = [c.get("idx") or 0 for c in section.get("chunks", [])]
     chunk_wavs: dict = {}
+    remote_chunks = 0
+    local_chunks = 0
     futs = {pool.submit(_synth_one, book_id, section_idx, work_dir, c, voice)
             for c in section.get("chunks", [])}
     for fut in as_completed(futs):
-        chunk, wav, dur = fut.result()
+        chunk, wav, dur, engine_used = fut.result()
         cidx = chunk.get("idx") or 0
         chunk_wavs[cidx] = (chunk, wav, dur)
+        if engine_used == "remote":
+            remote_chunks += 1
+        elif engine_used == "local":
+            local_chunks += 1
         _publish(book_id, "chunk", {"idx": section_idx, "chunk": cidx})
         if len(chunk_wavs) % 10 == 0:
             _mark_chunks(book_id, section_idx, list(chunk_wavs))
@@ -668,7 +698,7 @@ def generate_section(book_id: str, section_idx: int) -> None:
         m["alignment"] = ("whisperx" if whisperx_chunks and
                           whisperx_chunks == len(wavs) else "interp")
         m["voice"] = voice
-        m["engine"] = engine()
+        m["engine"] = _section_engine(remote_chunks, local_chunks)
 
     manifest = manifestio.update(book_id, _mutate) or manifest
     try:  # the prefix file is subsumed by the final render
