@@ -1305,6 +1305,15 @@ html[data-anim='on'] .book-scene.is-presented::before {
     width: calc(var(--spine-w) + var(--cover-w) * 0.7);
     z-index: 5;
     perspective-origin: calc(var(--cover-w) * 0.35) calc(var(--bh) * 0.5);
+    /* entering the crack reads its transition HERE, so drop the base rule's
+       180ms width lag — it let the angled cover lie over the right neighbor
+       until the slot caught up. (Transitions come from the destination
+       state's computed style, so the other paths are untouched: leaving
+       hover and the present hop still ease through the base rule, where the
+       lag is deliberate — the turn hides behind the still-narrow slot.) */
+    transition:
+      width 620ms var(--ease-spring),
+      perspective-origin 620ms var(--ease-settle);
   }
   .book-scene:hover:not(.is-presented) .book {
     transform: rotateY(46deg) translateY(-3px);
