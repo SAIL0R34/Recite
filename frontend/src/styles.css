@@ -703,8 +703,11 @@ input[type='range'].scrub:disabled {
   .book-sheen,
   .book-top,
   .book-bottom,
-  .book-fore,
-  .book-band {
+  .book-fore {
+    animation: none !important;
+    transition: none !important;
+  }
+  .book-scene::before {
     animation: none !important;
     transition: none !important;
   }
@@ -1045,79 +1048,39 @@ input[type='range'].scrub:disabled {
   z-index: 2;
 }
 
-/* paper belly band across the presented cover — Grokipedia's jacket band */
-.book-band {
-  position: absolute;
-  left: -4%;
-  right: -4%;
-  top: 10%;
-  height: 38%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 8% 7%;
-  text-align: center;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--paper-raised) 84%, #fff),
-    var(--paper-raised) 55%,
-    color-mix(in srgb, var(--paper-raised) 92%, var(--bg))
-  );
-  box-shadow:
-    /* classic jacket-band trim rules framing the paper */
-    inset 0 1px 0 color-mix(in srgb, var(--ink) 22%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--ink) 22%, transparent),
-    0 1px 0 rgb(0 0 0 / 0.08),
-    0 2px 6px rgb(0 0 0 / 0.1);
-}
-html[data-anim='on'] .book-band {
-  animation: band-fade 260ms ease 460ms both;
-}
-@keyframes band-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-.book-band::after {
+/* presented halo — the selection cue. The belly band it replaces duplicated
+   the title/author already on the cover; a soft accent glow behind the
+   pulled-out book says "this one" without covering anything. Painted on the
+   scene (not the 3D chain — a filter there would flatten the box). */
+.book-scene::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background-image: var(--grain);
-  background-size: 90px;
-  mix-blend-mode: multiply;
-  opacity: 0.3;
+  inset: -5% -3%;
+  z-index: 0;
+  border-radius: 20px;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--accent) 30%, transparent),
+    transparent 78%
+  );
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 360ms ease 340ms; /* ignites as the hop settles */
 }
-.book-band-kicker {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
+.book-scene.is-presented::before {
+  opacity: 1;
 }
-.book-band-title {
-  font-size: 17px;
-  line-height: 1.12;
-  color: var(--ink);
-  text-shadow: 0 1px 0 rgb(255 255 255 / 0.55); /* letterpress on paper */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+html[data-anim='on'] .book-scene.is-presented::before {
+  animation: glow-breathe 2.6s ease-in-out 1s infinite;
 }
-.book-band-author {
-  font-size: 10.5px;
-  font-style: italic;
-  color: var(--muted);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
 }
 
 .book-sheen {
@@ -1267,7 +1230,8 @@ html[data-anim='on'] .book-band {
     transform 400ms var(--ease-out-soft),
     opacity 400ms ease,
     left 400ms var(--ease-out-soft),
-    right 400ms var(--ease-out-soft);
+    right 400ms var(--ease-out-soft),
+    filter 400ms ease;
 }
 
 /* poses: rest spine-on (84°), hover cracks the cover open, presented faces
@@ -1296,9 +1260,10 @@ html[data-anim='on'] .book-band {
      stays grounded instead of floating on a spine-width blob */
   .book-scene:hover:not(.is-presented) .book-shadow {
     left: 6%;
-    right: calc(-1 * var(--cover-w) * 0.68);
-    transform: scale(1, 1.15);
-    opacity: 0.75;
+    right: calc(-1 * var(--cover-w) * 0.66);
+    transform: translateY(6px) scale(1.05, 1.3);
+    opacity: 0.95;
+    filter: blur(5px);
   }
 }
 .book-scene.is-presented .book {
@@ -1338,6 +1303,11 @@ html[data-anim='on'] .book-cover .book-sheen {
 html[data-anim='on'] .book-scene:not(.is-presented) .book-shadow {
   animation: shadow-breathe 7s ease-in-out infinite;
   animation-delay: var(--float-delay, 0s);
+}
+/* hovering replaces the idle breath with the deliberate cast — an animation
+   would otherwise override the hover transform/opacity */
+html[data-anim='on'] .book-scene:not(.is-presented):hover .book-shadow {
+  animation: none;
 }
 
 @keyframes book-float {

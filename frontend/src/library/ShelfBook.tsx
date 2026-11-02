@@ -101,15 +101,6 @@ export default function ShelfBook({
                 style={{ height: `clamp(8%, ${pct}%, 88%)` }}
               />
             )}
-            {presented && (
-              <span className="book-band">
-                <span className="book-band-kicker">From the shelf</span>
-                <span className="book-band-title">{book.title}</span>
-                <span className="book-band-author">
-                  {book.author || 'Unknown'}
-                </span>
-              </span>
-            )}
             <span className="book-sheen" />
           </span>
         </span>
