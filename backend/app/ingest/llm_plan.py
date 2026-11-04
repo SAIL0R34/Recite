@@ -206,33 +206,48 @@ def groups_from_breaks(paragraphs: List[dict],
     are what local models are slow at — a bitmask costs ~1 token per
     sentence instead of ~30 per group, which is the difference between
     a section finishing in seconds and timing out. Unknown paragraph keys
-    are ignored (harmless model echo); every speakable paragraph must have
-    a binary mask. Small models are sloppy counters, so length is REPAIRED
-    (truncate extras / extend the last chunk over a missing tail, and the
-    first sentence always starts a chunk) rather than rejected — a drift of
-    one position still yields a legal plan, and the fold/cap validators
+    are ignored (harmless model echo; small models also echo the prompt's
+    "paragraph N:" label into the key, which is tolerated too).
+
+    Degradation is PER PARAGRAPH: a mask that is missing, empty, or under
+    90% binary (a model that never understood the format, not a typo)
+    falls back to the heuristic grouping for that paragraph alone — one
+    sloppy paragraph must not discard good decisions for the other
+    twenty-three. Masks that pass are REPAIRED rather than rejected:
+    stray digits (>1) read as "0", wrong lengths are clamped/extended,
+    and the first sentence always starts a chunk. The fold/cap validators
     downstream guarantee the structural invariants regardless.
     """
     if not isinstance(breaks, dict):
         return None
+
+    def _heuristic_groups(p: int, texts: List[str]) -> List[dict]:
+        return [{"para": p, "from": s0, "to": s1}
+                for s0, s1, _t in chunk_paragraph(texts)]
+
     groups: List[dict] = []
+    any_llm = False
     for para in paragraphs:
         p = para["idx"]
-        n = len(para.get("sentences") or [])
-        # small models echo the prompt's "paragraph N:" label into the key
+        texts = [s.get("text", "") for s in para.get("sentences") or []]
+        n = len(texts)
         mask = breaks.get(str(p), breaks.get(f"paragraph {p}"))
-        if not isinstance(mask, str) or not mask:
-            return None
-        if any(ch not in "01" for ch in mask):
-            return None
+        ok = isinstance(mask, str) and mask and n and \
+            sum(1 for ch in mask if ch in "01") / len(mask) >= 0.9
+        if not ok:
+            groups.extend(_heuristic_groups(p, texts))
+            continue
+        any_llm = True
+        mask = "".join(ch if ch in "01" else "0" for ch in mask)
         mask = mask[:n] if len(mask) > n else mask.ljust(n, "0")
-        if n:
-            mask = "1" + mask[1:]
+        mask = "1" + mask[1:]
         starts = [i for i, ch in enumerate(mask) if ch == "1"]
         for j, s in enumerate(starts):
             e = starts[j + 1] - 1 if j + 1 < len(starts) else n - 1
             groups.append({"para": p, "from": s, "to": e})
-    return groups or None
+    if not groups:
+        return None
+    return groups if any_llm else None  # pure heuristic echo: say so
 
 
 # Response-format ladder, strictest first: json_schema constrains the

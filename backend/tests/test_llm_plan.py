@@ -179,19 +179,45 @@ def test_breaks_shape_plans_chunks(llm_env):
 
 
 @pytest.mark.parametrize("breaks", [
-    {"0": "1o0", "1": "1"},       # non-binary character
+    {"0": "1o0", "1": "1"},       # 2/3 binary — under the repair threshold
+    {"0": "10o0101", "1": "1"},   # 6/7 binary — still under
     {"1": "1"},                   # missing paragraph mask
-    {"0": "110"},
+    {"0": "110"},                 # para 1 mask missing
     {"0": "", "1": "1"},          # empty mask
 ])
-def test_breaks_shape_rejects_malformed_masks(llm_env, breaks):
+def test_breaks_degrades_bad_masks_per_paragraph(llm_env, breaks):
     def handler(_r):
         return breaks_response(breaks)
 
     chunks, _tw, used, reason = plan_via(SECTION, handler)
-    assert used is False
-    assert reason in ("bad_json", "bad_groups")
+    assert used is True and reason is None   # the good paragraphs keep the LLM
+    # para 0 degraded to the heuristic (one chunk), para 1 is its own chunk
+    assert [c["sentence_range"] for c in chunks] == [[0, 2], [0, 0]]
+
+
+def test_breaks_all_bad_masks_reject_the_section(llm_env):
+    def handler(_r):
+        return breaks_response({"0": "1o0", "1": "xyz"})
+
+    chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is False and reason in ("bad_json", "bad_groups")
     assert chunks  # heuristic fallback produced a plan
+
+
+def test_breaks_repairs_stray_digit_typos(llm_env):
+    # llama-style live failure: correct length, 11/12 binary, one stray "2"
+    texts = [f"Sentence number {i} sits right here." for i in range(12)]
+    sec = section_with(texts)
+
+    def handler(_r):
+        return breaks_response({"0": "100201010100"})
+
+    chunks, _tw, used, reason = llm_plan.plan_section(
+        sec, True, llm_plan.Breaker(3), client=mock_client(handler))
+    assert used is True and reason is None
+    # the stray "2" reads as "0": breaks at 0, 5, 7, 9
+    assert [c["sentence_range"] for c in chunks] == [
+        [0, 4], [5, 6], [7, 8], [9, 11]]
 
 
 def test_breaks_repairs_sloppy_lengths(llm_env):
