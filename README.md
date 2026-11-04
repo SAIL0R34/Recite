@@ -59,6 +59,15 @@ make build
 make run                # http://localhost:8744
 ```
 
+`make run` binds `0.0.0.0`, so any device on your Tailnet can read at
+`http://<this-machine's-tailscale-ip>:8744` — the tunnel encrypts the
+traffic, and progress, bookmarks, highlights, and settings sync through
+the same server. For a ts.net HTTPS name instead, enable MagicDNS in the
+admin console and run `tailscale serve --bg 8743`; beware that anything
+already bound to `:443` (Caddy, another reverse proxy) will conflict with
+serve's default listener — use `tailscale serve --bg --https=8443 8744`
+for a non-443 HTTPS port.
+
 ## Workflow
 
 1. Add books from your library dir (default `~/Documents/BOOKS`;
@@ -98,7 +107,7 @@ Delete it to reset the app. Every path is env-overridable:
 | `RECITE_LLM_BASE_URL` | _(unset)_ | OpenAI-compatible chat endpoint for the LLM chunk planner (see below) |
 | `RECITE_LLM_API_KEY` | _(unset)_ | bearer token for that endpoint; leave unset for local Ollama / LM Studio |
 | `RECITE_LLM_MODEL` | _(unset)_ | model name, e.g. `gpt-4o-mini` or `qwen2.5:7b` |
-| `RECITE_LLM_TIMEOUT` | `60` | seconds per planner call |
+| `RECITE_LLM_TIMEOUT` | `120` | seconds per planner call |
 | `RECITE_LLM_MAX_FAILURES` | `3` | consecutive failures before the rest of an operation uses the heuristic |
 | `RECITE_TTS_BASE_URL` | _(unset)_ | OpenAI-compatible speech endpoint for remote synthesis (see below) |
 | `RECITE_TTS_API_KEY` | _(unset)_ | bearer token for that endpoint |
@@ -115,14 +124,20 @@ external services, two things change:
 - **LLM chunk planner** (`RECITE_LLM_*`) — any OpenAI-compatible chat
   endpoint (OpenAI, an OpenAI-compatible proxy, Ollama, LM Studio) chooses
   where narration chunks break: semantic breathing points instead of the
-  punctuation heuristic. The model never rewrites text — it returns
-  sentence-index ranges, validated locally (coverage, char budgets,
-  paragraph walls) with the heuristic as a per-section fallback. The plan
-  is stored in `manifest.json` (`"planner": "llm:<model>"`), a book is
+  punctuation heuristic. The model never rewrites text — it returns a
+  compact per-paragraph break mask (one character per sentence), validated
+  and repaired locally (coverage, char budgets, paragraph walls) with the
+  heuristic as a per-section fallback. Requests step down a
+  response-format ladder (`json_schema` → `json_object` → none) so
+  schema-enforcing endpoints return guaranteed-parseable JSON. The plan is
+  stored in `manifest.json` (`"planner": "llm:<model>"`), a book is
   re-asked only when you explicitly re-chunk it (the ↺ button uses the
   planner when one is configured; `?planner=heuristic` forces the rules),
   and the startup re-chunk sweep never touches the endpoint. A base URL
-  with or without a trailing `/v1` both work.
+  with or without a trailing `/v1` both work. A small **non-reasoning**
+  instruct model (e.g. `qwen2.5-7b-instruct`) is the right size: chunk
+  grouping is structural, and reasoning models spend their latency budget
+  thinking before they answer.
 - **Remote TTS engine** (`RECITE_TTS_*`) — any OpenAI-compatible
   `/v1/audio/speech` endpoint synthesizes instead of local Kokoro, which is
   the speed lever: generation stops being bound to your CPU. Any failure
