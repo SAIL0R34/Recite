@@ -51,6 +51,12 @@ def ok_response(groups) -> httpx.Response:
         {"message": {"content": ok_content(groups)}}]})
 
 
+def breaks_response(breaks) -> httpx.Response:
+    """The compact shape the prompt asks for (one char per sentence)."""
+    return httpx.Response(200, json={"choices": [
+        {"message": {"content": json.dumps({"breaks": breaks})}}]})
+
+
 def section_with(texts):
     return {"idx": 0, "title": "S", "paragraphs": [
         {"idx": 0, "no_tts": False, "sentences": [{"text": t} for t in texts]}]}
@@ -160,6 +166,54 @@ def test_validator_refuses_fold_past_cap():
 
 # ------------------------------------------------------------ client
 
+def test_breaks_shape_plans_chunks(llm_env):
+    # para 0: chunk at 0..1, then 2 alone; para 1: single chunk
+    def handler(_r):
+        return breaks_response({"0": "110", "1": "1"})
+
+    chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is True and reason is None
+    # "Three." folds in, exactly like the groups path
+    assert [c["text"] for c in chunks] == [
+        "One one one. Two two two, with a clause. Three.", "Four."]
+
+
+@pytest.mark.parametrize("breaks", [
+    {"0": "1o0", "1": "1"},       # non-binary character
+    {"1": "1"},                   # missing paragraph mask
+    {"0": "110"},
+    {"0": "", "1": "1"},          # empty mask
+])
+def test_breaks_shape_rejects_malformed_masks(llm_env, breaks):
+    def handler(_r):
+        return breaks_response(breaks)
+
+    chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is False
+    assert reason in ("bad_json", "bad_groups")
+    assert chunks  # heuristic fallback produced a plan
+
+
+def test_breaks_repairs_sloppy_lengths(llm_env):
+    def handler(_r):
+        # para 0 has 3 sentences: mask too long (clamped) + leading 0 fixed;
+        # para 1 has 1 sentence: mask too short (tail extends the chunk)
+        return breaks_response({"0": "0100101", "1": "11"})
+
+    chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is True and reason is None
+    # para 0 repaired to "100" -> chunk [0,2], folded; para 1 to "1"
+    assert [c["sentence_range"] for c in chunks] == [[0, 2], [0, 0]]
+
+
+def test_breaks_ignores_unknown_paragraph_keys(llm_env):
+    def handler(_r):
+        return breaks_response({"0": "111", "1": "1", "99": "1"})
+
+    _chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is True and reason is None
+
+
 def test_make_client_carries_the_bearer(llm_env):
     c = llm_plan.make_client()
     assert c.headers["Authorization"] == "Bearer sk-test"
@@ -186,7 +240,8 @@ def test_request_shape(llm_env):
     assert seen["auth"] == "Bearer sk-test"
     assert seen["body"]["model"] == "test-model"
     assert seen["body"]["temperature"] == 0
-    assert seen["body"]["response_format"] == {"type": "json_object"}
+    assert seen["body"]["response_format"] == {
+        "type": "json_schema", "json_schema": llm_plan._BREAKS_SCHEMA}
     assert chunks[0]["text"].endswith("Three.")  # tiny group folded in
 
 
@@ -215,20 +270,45 @@ def test_no_auth_header_without_key(llm_env, monkeypatch):
     assert used is True
 
 
-def test_400_retries_once_without_response_format(llm_env):
+def test_400_steps_down_the_format_ladder(llm_env):
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         calls.append(body.get("response_format"))
-        if len(calls) == 1:
+        if len(calls) <= 2:                 # json_schema and json_object rejected
             return httpx.Response(400, json={"error": "bad param"})
         return ok_response([{"para": 0, "from": 0, "to": 2},
                             {"para": 1, "from": 0, "to": 0}])
 
     chunks, _tw, used, _reason = plan_via(SECTION, handler)
     assert used is True
-    assert calls == [{"type": "json_object"}, None]
+    assert [c.get("type") if c else None for c in calls] == \
+        ["json_schema", "json_object", None]
+
+
+def test_json_schema_is_tried_first(llm_env):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content).get("response_format"))
+        return ok_response([{"para": 0, "from": 0, "to": 2},
+                            {"para": 1, "from": 0, "to": 0}])
+
+    plan_via(SECTION, handler)
+    assert calls == [{"type": "json_schema", "json_schema": llm_plan._BREAKS_SCHEMA}]
+
+
+def test_think_blocks_are_stripped_before_parsing(llm_env):
+    def handler(_r):
+        content = ("<think>hmm let me consider paragraph structure</think>"
+                   + ok_content([{"para": 0, "from": 0, "to": 2},
+                                 {"para": 1, "from": 0, "to": 0}]))
+        return httpx.Response(200, json={"choices": [
+            {"message": {"content": content}}]})
+
+    _chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is True and reason is None
 
 
 def test_fenced_json_tolerated(llm_env):

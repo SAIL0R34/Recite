@@ -18,6 +18,7 @@ failures. Unset endpoints make no network calls at all.
 from __future__ import annotations
 
 import json
+import re
 from typing import List, Optional, Tuple
 
 import httpx
@@ -42,15 +43,18 @@ _SYSTEM = (
 _RULES = """Group the numbered sentences below into narration chunks.
 
 Rules:
-- Every sentence appears in exactly one group; keep document order.
-- A group stays inside one paragraph; a paragraph break always starts a new group.
-- Aim for 120-300 characters per group; each sentence's character count is in parentheses.
+- For each paragraph, output one string: one character per sentence, in
+  order, where "1" marks the first sentence of a chunk and "0" marks a
+  sentence that continues the current chunk. The string's length equals
+  that paragraph's sentence count, and its first character is always "1".
+- A chunk stays inside one paragraph.
+- Aim for 120-300 characters per chunk; each sentence's character count is in parentheses.
 - Break where a narrator would breathe: prefer boundaries after . ! ? over , ; :
-- Keep short rhetorical pairs (call and response, question and answer) in one group.
+- Keep short rhetorical pairs (call and response, question and answer) in one chunk.
 - Lines are "i (n) text" where i is the sentence index within its paragraph.
 
 Respond with exactly this JSON shape and nothing else:
-{"groups": [{"para": <paragraph id>, "from": <first index>, "to": <last index>}]}
+{"breaks": {"<paragraph id>": "100101..."}}
 """
 
 
@@ -125,9 +129,13 @@ def _extract_content(payload: dict) -> str:
     return content
 
 
-def _parse_groups(content: str) -> Optional[list]:
-    """JSON object with a `groups` list; markdown fences tolerated."""
-    text = content.strip()
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _loads_content(content: str) -> Optional[dict]:
+    """Content -> a JSON object; markdown fences and reasoning-model
+    <think> blocks tolerated (some endpoints inline the reasoning)."""
+    text = _THINK_BLOCK.sub("", content.strip()).strip()
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
@@ -138,21 +146,89 @@ def _parse_groups(content: str) -> Optional[list]:
             payload = json.loads(text[start:end + 1])
         except json.JSONDecodeError:
             return None
-    groups = payload.get("groups") if isinstance(payload, dict) else None
+    return payload if isinstance(payload, dict) else None
+
+
+def _parse_groups(content: str) -> Optional[list]:
+    """Legacy shape: {"groups": [{"para", "from", "to"}]} (still accepted)."""
+    payload = _loads_content(content)
+    groups = payload.get("groups") if payload else None
     return groups if isinstance(groups, list) else None
 
 
+def groups_from_breaks(paragraphs: List[dict],
+                       breaks: dict) -> Optional[List[dict]]:
+    """Compact shape: {"breaks": {"<para>": "100101…"}} -> groups.
+
+    One character per sentence, "1" = a chunk starts there. Output tokens
+    are what local models are slow at — a bitmask costs ~1 token per
+    sentence instead of ~30 per group, which is the difference between
+    a section finishing in seconds and timing out. Unknown paragraph keys
+    are ignored (harmless model echo); every speakable paragraph must have
+    a binary mask. Small models are sloppy counters, so length is REPAIRED
+    (truncate extras / extend the last chunk over a missing tail, and the
+    first sentence always starts a chunk) rather than rejected — a drift of
+    one position still yields a legal plan, and the fold/cap validators
+    downstream guarantee the structural invariants regardless.
+    """
+    if not isinstance(breaks, dict):
+        return None
+    groups: List[dict] = []
+    for para in paragraphs:
+        p = para["idx"]
+        n = len(para.get("sentences") or [])
+        mask = breaks.get(str(p))
+        if not isinstance(mask, str) or not mask:
+            return None
+        if any(ch not in "01" for ch in mask):
+            return None
+        mask = mask[:n] if len(mask) > n else mask.ljust(n, "0")
+        if n:
+            mask = "1" + mask[1:]
+        starts = [i for i, ch in enumerate(mask) if ch == "1"]
+        for j, s in enumerate(starts):
+            e = starts[j + 1] - 1 if j + 1 < len(starts) else n - 1
+            groups.append({"para": p, "from": s, "to": e})
+    return groups or None
+
+
+# Response-format ladder, strictest first: json_schema constrains the
+# output shape (LM Studio and OpenAI enforce it — bad_json becomes
+# impossible), json_object is the older hint, none is the last resort for
+# endpoints that reject both. A 400 steps down one rung.
+_BREAKS_SCHEMA = {
+    "name": "chunk_breaks",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {"breaks": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        }},
+        "required": ["breaks"],
+        "additionalProperties": False,
+    },
+}
+_RESPONSE_FORMATS = [
+    {"type": "json_schema", "json_schema": _BREAKS_SCHEMA},
+    {"type": "json_object"},
+    None,
+]
+
+
 def _request_completion(client: httpx.Client, messages: List[dict]) -> str:
-    body = {"model": config.LLM_MODEL, "temperature": 0,
-            "messages": messages,
-            "response_format": {"type": "json_object"}}
+    body = {"model": config.LLM_MODEL, "temperature": 0, "messages": messages}
     try:
-        r = client.post(_chat_url(), json=body)
-        if r.status_code == 400:
-            # strict proxies reject unknown params — one retry without it
-            body.pop("response_format", None)
+        r = None
+        for fmt in _RESPONSE_FORMATS:
+            if fmt is None:
+                body.pop("response_format", None)
+            else:
+                body["response_format"] = fmt
             r = client.post(_chat_url(), json=body)
-        if r.status_code != 200:
+            if r.status_code != 400:
+                break                  # answered, or a non-format error
+        if r is None or r.status_code != 200:
             raise _LlmError("http_status")
         return _extract_content(r.json())
     except _LlmError:
@@ -272,7 +348,12 @@ def plan_section(section: dict, use_llm: bool, breaker: Breaker,
             content = _request_completion(c, [
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": render_user_message(section)}])
-            groups = _parse_groups(content)
+            payload = _loads_content(content)
+            if payload and isinstance(payload.get("breaks"), dict):
+                # compact shape (what the prompt asks for): mask -> groups
+                groups = groups_from_breaks(speakable, payload["breaks"])
+            else:
+                groups = _parse_groups(content)   # legacy shape, still valid
             if groups is None:
                 raise _LlmError("bad_json")
             chunks = build_chunks_from_groups(speakable, groups)

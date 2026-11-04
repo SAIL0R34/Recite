@@ -57,7 +57,7 @@ TTS_RETRIES = int(os.environ.get("RECITE_TTS_RETRIES", "2"))
 LLM_BASE_URL = os.environ.get("RECITE_LLM_BASE_URL", "").rstrip("/")
 LLM_API_KEY = os.environ.get("RECITE_LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("RECITE_LLM_MODEL", "")
-LLM_TIMEOUT_S = float(os.environ.get("RECITE_LLM_TIMEOUT", "60"))
+LLM_TIMEOUT_S = float(os.environ.get("RECITE_LLM_TIMEOUT", "120"))
 # consecutive planner failures before the rest of an operation falls back
 # to the heuristic without asking again
 LLM_MAX_FAILURES = int(os.environ.get("RECITE_LLM_MAX_FAILURES", "3"))
