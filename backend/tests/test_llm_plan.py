@@ -308,6 +308,21 @@ def test_json_schema_is_tried_first(llm_env):
     assert calls == [{"type": "json_schema", "json_schema": llm_plan._BREAKS_SCHEMA}]
 
 
+def test_empty_content_salvages_reasoning_draft(llm_env):
+    def handler(_r):
+        # a reasoning model that exhausted its budget: empty content, but
+        # the answer was drafted at the end of the reasoning
+        msg = ("let me think about paragraphs... maybe {\"breaks\": {\"0\": "
+               "\"0\"}} no... final answer: "
+               + ok_content([{"para": 0, "from": 0, "to": 2},
+                             {"para": 1, "from": 0, "to": 0}]))
+        return httpx.Response(200, json={"choices": [
+            {"message": {"content": "", "reasoning_content": msg}}]})
+
+    _chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is True and reason is None
+
+
 def test_think_blocks_are_stripped_before_parsing(llm_env):
     def handler(_r):
         content = ("<think>hmm let me consider paragraph structure</think>"

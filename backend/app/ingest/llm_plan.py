@@ -122,32 +122,73 @@ def render_user_message(section: dict) -> str:
 
 def _extract_content(payload: dict) -> str:
     try:
-        content = payload["choices"][0]["message"]["content"]
+        message = payload["choices"][0]["message"]
     except (KeyError, IndexError, TypeError):
         raise _LlmError("bad_response")
-    if not isinstance(content, str) or not content.strip():
-        raise _LlmError("bad_response")
-    return content
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    # A reasoning model that spent its whole budget thinking returns an
+    # empty content; its reasoning usually drafts the answer at the end,
+    # and the fence-tolerant loader's outermost-brace scan can find it.
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning.strip():
+        return reasoning
+    raise _LlmError("bad_response")
 
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
+def _candidate_objects(text: str) -> List[str]:
+    """Top-level balanced {…} spans in document order (string-aware, so
+    braces inside JSON string values don't confuse the count)."""
+    spans: List[str] = []
+    depth, start = 0, -1
+    in_str = esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    spans.append(text[start:i + 1])
+    return spans
+
+
 def _loads_content(content: str) -> Optional[dict]:
-    """Content -> a JSON object; markdown fences and reasoning-model
-    <think> blocks tolerated (some endpoints inline the reasoning)."""
+    """Content -> a JSON object. Tolerates markdown fences, inline
+    <think> blocks, and salvaged reasoning drafts (which may contain
+    false-start JSON before the real answer — so candidates are tried
+    from the LAST backwards, where a drafted final answer lives)."""
     text = _THINK_BLOCK.sub("", content.strip()).strip()
     try:
         payload = json.loads(text)
+        if isinstance(payload, dict):
+            return payload
     except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            return None
+        pass
+    for cand in reversed(_candidate_objects(text)):
         try:
-            payload = json.loads(text[start:end + 1])
+            payload = json.loads(cand)
+            if isinstance(payload, dict):
+                return payload
         except json.JSONDecodeError:
-            return None
-    return payload if isinstance(payload, dict) else None
+            continue
+    return None
 
 
 def _parse_groups(content: str) -> Optional[list]:
