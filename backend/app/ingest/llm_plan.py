@@ -47,6 +47,7 @@ Rules:
   order, where "1" marks the first sentence of a chunk and "0" marks a
   sentence that continues the current chunk. The string's length equals
   that paragraph's sentence count, and its first character is always "1".
+  Example: a 4-sentence paragraph breaking after the 2nd sentence is "1100".
 - A chunk stays inside one paragraph.
 - Aim for 120-300 characters per chunk; each sentence's character count is in parentheses.
 - Break where a narrator would breathe: prefer boundaries after . ! ? over , ; :
@@ -177,7 +178,8 @@ def groups_from_breaks(paragraphs: List[dict],
     for para in paragraphs:
         p = para["idx"]
         n = len(para.get("sentences") or [])
-        mask = breaks.get(str(p))
+        # small models echo the prompt's "paragraph N:" label into the key
+        mask = breaks.get(str(p), breaks.get(f"paragraph {p}"))
         if not isinstance(mask, str) or not mask:
             return None
         if any(ch not in "01" for ch in mask):

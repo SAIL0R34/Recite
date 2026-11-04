@@ -214,6 +214,15 @@ def test_breaks_ignores_unknown_paragraph_keys(llm_env):
     assert used is True and reason is None
 
 
+def test_breaks_tolerates_paragraph_label_keys(llm_env):
+    def handler(_r):
+        # small models echo the prompt's "paragraph N:" label into the key
+        return breaks_response({"paragraph 0": "111", "paragraph 1": "1"})
+
+    _chunks, _tw, used, reason = plan_via(SECTION, handler)
+    assert used is True and reason is None
+
+
 def test_make_client_carries_the_bearer(llm_env):
     c = llm_plan.make_client()
     assert c.headers["Authorization"] == "Bearer sk-test"
