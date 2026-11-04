@@ -1105,10 +1105,21 @@ input[type='range'].scrub:disabled {
     );
   pointer-events: none;
   opacity: 0;
-  transition: opacity 360ms ease 340ms; /* ignites as the hop settles */
+  /* fade-OUT path (destination = this rule when .is-presented drops):
+     snuff fast and undelayed — the symmetric 340ms+360ms left a ghost glow
+     at the vacated slot for ~700ms, trailing the retreating book. 180ms
+     matches the slot's width-shrink lag, so the halo is gone just as the
+     shelf starts closing. */
+  transition: opacity 180ms ease;
 }
+/* ignite path only: transitions come from the destination state's computed
+   style (same trick as the hover crack below), so selection alone pays the
+   delayed arrival — the glow ramps 240-660ms, landing WITH the 820ms hop's
+   settle instead of after it; glow-breathe takes over at 1s. Deselection
+   reverts to the base rule's fast snuff above. */
 .book-scene.is-presented::before {
   opacity: 1;
+  transition: opacity 420ms var(--ease-settle) 240ms;
 }
 html[data-anim='on'] .book-scene.is-presented::before {
   animation: glow-breathe 2.6s ease-in-out 1s infinite;
