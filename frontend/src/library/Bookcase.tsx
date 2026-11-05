@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import type { BookSummary } from '../types'
-import { SHELF_GAP, chunk, sectionBooks } from './shelf'
+import { SHELF_GAP, assortSpines, chunk, sectionBooks } from './shelf'
 import ShelfBook from './ShelfBook'
 
 interface BookcaseProps {
@@ -32,7 +32,12 @@ export default function Bookcase({
   onPerRow,
 }: BookcaseProps) {
   const [perRow, setPerRow] = useState(8)
-  const sections = sectionBooks(books)
+  const sections = useMemo(() => sectionBooks(books), [books])
+  // assorted slots per section: deterministic, adjacency-aware (see shelf.ts)
+  const slotsBySection = useMemo(
+    () => sections.map((s) => assortSpines(s.books)),
+    [sections],
+  )
   const firstId = sections[0]?.books[0]?.id
 
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function Bookcase({
 
   return (
     <div ref={rootRef} className="bookcase" onKeyDown={onKeyDown}>
-      {sections.map((s) => (
+      {sections.map((s, si) => (
         <section key={s.key} aria-label={s.label} className="shelf-section">
           <div className="shelf-heading">
             <span className="kicker">{s.label}</span>
@@ -79,6 +84,7 @@ export default function Bookcase({
                     presented={b.id === selectedId}
                     launching={b.id === launchingId}
                     tabbable={b.id === selectedId || (!selectedId && b.id === firstId)}
+                    slot={slotsBySection[si].get(b.id)}
                     onSelect={() => onSelect(b.id)}
                     onOpen={() => onOpen(b.id)}
                   />

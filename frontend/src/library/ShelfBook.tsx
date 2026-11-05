@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { BookSummary } from '../types'
 import { coverUrl } from '../api/client'
 import { floatDelay, restTilt, spineScale, spineTint, spineWidth } from './shelf'
+import type { SpineSlot } from './shelf'
+import { sampleCoverTint } from './spineColor'
 
 interface ShelfBookProps {
   book: BookSummary
@@ -11,36 +13,61 @@ interface ShelfBookProps {
   launching: boolean
   /** roving tabindex: the presented book, or the first book when none is */
   tabbable: boolean
+  /** assorted pose from assortSpines; hash fallbacks apply when absent */
+  slot?: SpineSlot
   onSelect: () => void
   onOpen: () => void
 }
 
 /**
  * A book on the shelf, Grokipedia-style: at rest it is a NARROW SPINE
- * (title running vertically, hashed cloth tint, paper foot band); the front
- * cover lives on the same 3D box, turned away. Presenting rotates the book
- * open and widens its slot — neighbors part to make room — until the full
- * cover faces you wearing its paper band. Second click reads: the flat
- * cover face is the flight origin (found via [data-book-id] .book-cover).
+ * (title running vertically, cloth tint, paper foot band); the front
+ * cover lives on the same 3D box, turned away. The spine wears the
+ * COVER's own hue (muted into cloth range) once sampled, with the
+ * assorted slot as the pre-sample pose and the fallback. Presenting
+ * rotates the book open and widens its slot — neighbors part to make
+ * room — until the full cover faces you wearing its paper band. Second
+ * click reads: the flat cover face is the flight origin (found via
+ * [data-book-id] .book-cover).
  */
 export default function ShelfBook({
   book,
   presented,
   launching,
   tabbable,
+  slot,
   onSelect,
   onOpen,
 }: ShelfBookProps) {
   const [imgOk, setImgOk] = useState(true)
+  const [coverTint, setCoverTint] = useState<string | null>(null)
   const gen = book.generation
   const generating = gen != null && gen.ready < gen.total
   const pct = Math.max(0, Math.min(100, book.percent ?? 0))
+
+  // The spine matches the real cover where the cover has a definable hue;
+  // grayscale/missing covers keep their assorted cloth (sample resolves
+  // null, cached, so nothing re-samples).
+  useEffect(() => {
+    if (!imgOk) {
+      setCoverTint(null)
+      return
+    }
+    let live = true
+    void sampleCoverTint(book.id, coverUrl(book.id)).then((t) => {
+      if (live) setCoverTint(t)
+    })
+    return () => {
+      live = false
+    }
+  }, [book.id, imgOk])
+
   const scene = {
-    '--tint': spineTint(book.title),
-    '--float-delay': floatDelay(book.title),
-    '--spine-scale': spineScale(book.title),
-    '--rest-tilt': restTilt(book.title),
-    '--spine-w': `${spineWidth(book.title)}px`,
+    '--tint': coverTint ?? slot?.cloth ?? spineTint(book.title),
+    '--float-delay': slot?.floatDelay ?? floatDelay(book.title),
+    '--spine-scale': String(slot?.scale ?? spineScale(book.title)),
+    '--rest-tilt': slot?.tilt ?? restTilt(book.title),
+    '--spine-w': `${slot?.width ?? spineWidth(book.title)}px`,
   } as CSSProperties
 
   return (
