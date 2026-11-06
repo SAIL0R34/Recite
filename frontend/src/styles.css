@@ -85,6 +85,10 @@ html[data-theme='dark'] {
 /* theme-independent */
 :root {
   --font-display: 'Newsreader Variable', Georgia, 'Times New Roman', serif;
+  /* book materials — a book's paper does not change with the room's light:
+     page edges and the spine foot band stay cream in every theme */
+  --book-paper: #f2ead8;
+  --book-paper-lo: #e4d8bd;
   /* single-hue chart marks (dataviz-validated per surface) */
   --chart-mark: var(--accent);
   --ease-spring: cubic-bezier(0.34, 1.35, 0.44, 1);
@@ -1221,7 +1225,7 @@ html[data-anim='on'] .book-scene.is-presented::before {
   left: 0;
   right: 0;
   height: 13px;
-  background: linear-gradient(to bottom, var(--paper-raised), var(--bg));
+  background: linear-gradient(to bottom, var(--book-paper), var(--book-paper-lo));
   box-shadow: 0 -1px rgb(0 0 0 / 0.18);
 }
 
@@ -1239,7 +1243,7 @@ html[data-anim='on'] .book-scene.is-presented::before {
       rgb(0 0 0 / 0.1) 0 1px,
       transparent 1px 3px
     ),
-    linear-gradient(to bottom, var(--paper-raised), var(--bg));
+    linear-gradient(to bottom, var(--book-paper), var(--book-paper-lo));
   border-radius: 2px;
 }
 .book-top {
@@ -1279,8 +1283,8 @@ html[data-anim='on'] .book-scene.is-presented::before {
     ),
     linear-gradient(
       to bottom,
-      color-mix(in srgb, var(--accent) 55%, var(--paper-raised)),
-      var(--paper-raised)
+      color-mix(in srgb, var(--accent) 55%, var(--book-paper)),
+      var(--book-paper)
     );
 }
 
