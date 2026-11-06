@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { BookSummary } from '../types'
 import { coverUrl } from '../api/client'
@@ -41,6 +41,23 @@ export default function ShelfBook({
 }: ShelfBookProps) {
   const [imgOk, setImgOk] = useState(true)
   const [coverTint, setCoverTint] = useState<string | null>(null)
+  const titleRef = useRef<HTMLSpanElement>(null)
+
+  // Long titles condense instead of clipping: step the spine title's font
+  // down (10.5px CSS base) until the vertical run fits the book's height.
+  // Measured, not estimated — glyph metrics and per-book heights vary.
+  // Layout effect: fitted before first paint, so no clipped flash. Below
+  // the floor the CSS ellipsis is the last resort.
+  useLayoutEffect(() => {
+    const el = titleRef.current
+    if (!el) return
+    el.style.fontSize = ''
+    let size = 10.5
+    while (size > 6.5 && el.scrollHeight > el.clientHeight + 1) {
+      size -= 0.5
+      el.style.fontSize = `${size}px`
+    }
+  }, [book.title])
   const gen = book.generation
   const generating = gen != null && gen.ready < gen.total
   const pct = Math.max(0, Math.min(100, book.percent ?? 0))
@@ -95,7 +112,9 @@ export default function ShelfBook({
         <span className="book">
           {/* the spine the world sees at rest */}
           <span className="book-face book-spine">
-            <span className="book-spine-title">{book.title}</span>
+            <span ref={titleRef} className="book-spine-title">
+              {book.title}
+            </span>
             <span className="book-spine-band" />
           </span>
           {/* page-block top edge; warm gilt wash while narration generates */}
