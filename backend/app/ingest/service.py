@@ -16,12 +16,14 @@ import json
 import logging
 import os
 import re
+import threading
 import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .. import config, db as _db_module, manifestio
 from . import epub as epub_module, llm_plan, pdf as pdf_module
+from .chunker import plan_sections
 from .model import Document, Extraction, stitch_open_paragraphs
 
 ENGINE = "kokoro-0.9.4"
@@ -198,13 +200,10 @@ def ingest_file(path: str) -> dict:
 
     secs = document.to_manifest_sections()
     body = [d for d in secs if d["idx"] not in front]
-    chunk_sections, chunk_words, pstats = llm_plan.plan_sections_planned(
-        body, llm_plan.llm_configured())
-    if pstats["llm_sections"]:
-        logging.getLogger("recite").info(
-            "llm planner %s: %d section(s), %d fell back %s",
-            config.LLM_MODEL, pstats["llm_sections"],
-            pstats["fallback_sections"], pstats["fallback_reasons"])
+    # Heuristic ALWAYS: the add request must return in seconds. The LLM
+    # planner (when configured) re-plans in the background after the add —
+    # see arm_book — so a 600-section book never blocks on 600 chat calls.
+    chunk_sections, chunk_words = plan_sections(body)
     for d in secs:
         if d["idx"] in front:
             d["chunks"] = []
@@ -218,8 +217,135 @@ def ingest_file(path: str) -> dict:
 
     _write_json(config.book_file(book_id, "document.json"), document.to_dict())
     manifestio.init_manifest(book_id, sections=chunk_sections, engine=ENGINE,
-                             voice=_voice_setting(), planner=pstats["planner"])
+                             voice=_voice_setting())
     _write_cover(book_id, str(src), fmt)
     book = _db_module.db.add_book(book_id, str(src), title, extraction.author,
                                   fmt, warnings, total_words)
     return _db_module.db.get_book(book_id) or book
+
+
+# --------------------------------------------------------------- arming
+
+log = logging.getLogger("recite")
+
+_ARMED: set = set()
+_ARMED_LOCK = threading.Lock()
+
+
+def _section_payload(doc_sec: dict) -> dict:
+    """document.json section -> the shape llm_plan.plan_section expects."""
+    return {
+        "idx": doc_sec.get("idx"),
+        "title": doc_sec.get("title"),
+        "paragraphs": [
+            {"idx": p.get("idx"), "no_tts": bool(p.get("no_tts")),
+             "sentences": [{"text": s.get("text", "")}
+                           for s in p.get("sentences") or []]}
+            for p in doc_sec.get("paragraphs") or []
+        ],
+    }
+
+
+def _manifest_chunk(idx: int, c: dict) -> dict:
+    return {"idx": c["idx"], "section": idx, "para": c["para"],
+            "sentence_range": list(c["sentence_range"]), "text": c["text"],
+            "global_start_ms": None, "duration_ms": None,
+            "status": "pending", "words": None}
+
+
+def _replan_pending(book_id: str) -> None:
+    """Background: LLM-replan every audio-less section, kicking the TTS
+    window as the planned prefix grows. Sections whose audio already
+    exists keep their chunks — boundaries lock in once spoken. Failing
+    sections silently keep the heuristic plan (per-section fallback in
+    llm_plan); the book always ends up generatable."""
+    from ..tts import gen_queue
+
+    try:
+        dp = config.book_file(book_id, "document.json")
+        if not dp.exists():
+            return
+        doc = json.loads(dp.read_text(encoding="utf-8"))
+        payloads = {s.get("idx"): _section_payload(s)
+                    for s in doc.get("sections") or []}
+        manifest = manifestio.load(book_id)
+        if manifest is None:
+            return
+        breaker = llm_plan.Breaker(config.LLM_MAX_FAILURES)
+        client = llm_plan.make_client()
+        llm_sections = 0
+        planned = 0
+        try:
+            for sec in manifest.get("sections", []):
+                idx = sec.get("idx")
+                if sec.get("tts") is False or idx not in payloads:
+                    continue
+                if sec.get("status") != "pending" or any(
+                        c.get("status") == "ready"
+                        for c in sec.get("chunks") or []):
+                    continue                     # claimed or spoken: locked
+                chunks, _tw, used, _reason = llm_plan.plan_section(
+                    payloads[idx], True, breaker, client=client)
+                if used:
+                    llm_sections += 1
+
+                    def _mut(m, idx=idx, chunks=chunks):
+                        s = next((x for x in m.get("sections", [])
+                                  if x.get("idx") == idx), None)
+                        if s is None:
+                            return False
+                        # only sections the queue never claimed: once a
+                        # section synthesizes, its boundaries are locked in
+                        if s.get("status") != "pending" or any(
+                                c.get("status") == "ready"
+                                for c in s.get("chunks") or []):
+                            return False
+                        s["chunks"] = [_manifest_chunk(idx, c) for c in chunks]
+                        return True
+
+                    if manifestio.update(book_id, _mut) is None:
+                        return                   # book deleted mid-arm
+                planned += 1
+                if planned == 10 or planned % 25 == 0:
+                    gen_queue.request_generation(book_id)
+                if breaker.open:
+                    break                        # endpoint gone bad; rest heuristic
+        finally:
+            client.close()
+        if llm_sections:
+
+            def _stamp(m):
+                m["planner"] = f"llm:{config.LLM_MODEL}"
+                return True
+
+            manifestio.update(book_id, _stamp)
+        log.info("book %s armed: %d section(s) planned, %d via llm",
+                 book_id, planned, llm_sections)
+        gen_queue.request_generation(book_id)
+    except Exception:
+        log.exception("arm/replan failed for book %s", book_id)
+
+
+def arm_book(book_id: str) -> "Optional[threading.Thread]":
+    """Start narration for a freshly added (or never-started) book. With
+    the planner configured, a daemon thread re-plans audio-less sections
+    first; otherwise the TTS window starts immediately. Idempotent per
+    process; never raises (arming is best-effort — the add must succeed).
+    Returns the replan thread when one is spawned (tests join it)."""
+    with _ARMED_LOCK:
+        if book_id in _ARMED:
+            return None
+        _ARMED.add(book_id)
+    try:
+        if llm_plan.llm_configured():
+            t = threading.Thread(target=_replan_pending, args=(book_id,),
+                                 name=f"recite-plan-{book_id}", daemon=True)
+            t.start()
+            return t
+        from ..tts import gen_queue
+        gen_queue.request_generation(book_id)
+    except Exception:
+        with _ARMED_LOCK:
+            _ARMED.discard(book_id)
+        log.warning("arming book %s failed", book_id, exc_info=True)
+    return None

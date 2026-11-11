@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from .. import config, events, manifestio
 from ..db import db
-from ..ingest.service import IngestError, ingest_file
+from ..ingest.service import IngestError, arm_book, ingest_file
 from ..tts import gen_queue
 
 router = APIRouter(prefix="/api/books", tags=["books"])
@@ -86,11 +86,13 @@ def add_book(body: AddBook):
     path = path.resolve()
     existing = db.find_book_by_path(str(path))
     if existing:
+        arm_book(existing["id"])   # re-adding re-arms a never-started book
         return {"book": existing, "already_present": True}
     try:
         book = ingest_file(str(path))
     except IngestError as e:
         raise HTTPException(422, str(e))
+    arm_book(book["id"])           # narration starts the moment it's added
     return {"book": book, "already_present": False}
 
 

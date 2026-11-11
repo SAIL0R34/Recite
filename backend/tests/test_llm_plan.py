@@ -6,6 +6,7 @@ endpoint, and the configured hosts are obviously fake.
 from __future__ import annotations
 
 import json
+import os
 
 import httpx
 import pytest
@@ -629,3 +630,130 @@ def test_rechunk_route_planner_param(client, monkeypatch):
     assert client.post("/api/books/b1/rechunk?planner=heuristic").status_code == 200
     assert seen["planner"] == "heuristic"
     assert client.post("/api/books/b1/rechunk?planner=nope").status_code == 422
+
+
+# ------------------------------------------------------- arming on add
+
+LONG_A = "The first sentence of a long paragraph that stays over the fold limit."
+LONG_B = "The second sentence is likewise long enough to stand as its own chunk."
+
+
+def _armable_book(book_id):
+    """document.json + manifest: section 0 spoken (ready chunk), section 1
+    pending with two long heuristic-merged sentences."""
+    doc = {"title": "T", "sections": [
+        {"idx": 0, "title": "S0", "paragraphs": [
+            {"idx": 0, "no_tts": False, "sentences": [{"text": "Spoken."}]}]},
+        {"idx": 1, "title": "S1", "paragraphs": [
+            {"idx": 0, "no_tts": False,
+             "sentences": [{"text": LONG_A}, {"text": LONG_B}]}]},
+    ]}
+    (config.book_dir(book_id)).mkdir(parents=True, exist_ok=True)
+    config.book_file(book_id, "document.json").write_text(
+        json.dumps(doc), encoding="utf-8")
+    manifestio.save(book_id, {
+        "engine": "kokoro", "voice": "af_heart", "planner": "heuristic",
+        "rule_version": 2, "sections": [
+            {"idx": 0, "title": "S0", "audio": "audio/section-000.mp3",
+             "status": "ready", "tts": True, "chunks": [
+                 {"idx": 0, "section": 0, "para": 0, "sentence_range": [0, 0],
+                  "text": "Spoken.", "global_start_ms": 0, "duration_ms": 500,
+                  "status": "ready", "words": [[0, 0, 300, "Spoken"]]}]},
+            {"idx": 1, "title": "S1", "audio": "audio/section-001.mp3",
+             "status": "pending", "tts": True, "chunks": [
+                 {"idx": 0, "section": 1, "para": 0, "sentence_range": [0, 1],
+                  "text": f"{LONG_A} {LONG_B}", "global_start_ms": None,
+                  "duration_ms": None, "status": "pending", "words": None}]},
+        ],
+    })
+    return doc
+
+
+def test_arm_book_replans_only_unspoken_sections(llm_env, monkeypatch, tmp_path):
+    from app.ingest import service
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "BOOKS_DIR_PATH", tmp_path / "books")
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "recite.db")
+    _stub_client(monkeypatch, smart_groups_handler)  # full-paragraph groups
+    kicked = []
+    import app.tts.gen_queue as gq
+    monkeypatch.setattr(gq, "request_generation",
+                        lambda bid, **kw: kicked.append(bid))
+    service._ARMED.clear()
+    _armable_book("arm1")
+
+    t = service.arm_book("arm1")
+    assert t is not None
+    t.join(timeout=30)
+    assert not t.is_alive()
+
+    m = manifestio.load("arm1")
+    # spoken section untouched — its boundaries are locked in
+    assert m["sections"][0]["chunks"][0]["text"] == "Spoken."
+    assert m["sections"][0]["chunks"][0]["duration_ms"] == 500
+    # the pending section was re-planned and the book stamped + kicked
+    assert m["planner"] == "llm:test-model"
+    assert "arm1" in kicked
+
+
+def test_arm_book_splits_pending_chunks_via_llm(llm_env, monkeypatch, tmp_path):
+    from app.ingest import service
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "BOOKS_DIR_PATH", tmp_path / "books")
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "recite.db")
+
+    def split_handler(request: httpx.Request) -> httpx.Response:
+        # one chunk per sentence: "11" for the two-sentence paragraph
+        return breaks_response({"0": "11"})
+
+    _stub_client(monkeypatch, split_handler)
+    import app.tts.gen_queue as gq
+    monkeypatch.setattr(gq, "request_generation", lambda bid, **kw: None)
+    service._ARMED.clear()
+    _armable_book("arm2")
+
+    t = service.arm_book("arm2")
+    t.join(timeout=30)
+
+    m = manifestio.load("arm2")
+    chunks = m["sections"][1]["chunks"]
+    assert len(chunks) == 2                       # split where heuristic merged
+    assert chunks[0]["text"] == LONG_A
+    assert chunks[1]["text"] == LONG_B
+    assert all(c["status"] == "pending" and c["words"] is None for c in chunks)
+
+
+def test_arm_book_unconfigured_kicks_queue_directly(monkeypatch):
+    from app.ingest import service
+
+    kicked = []
+    import app.tts.gen_queue as gq
+    monkeypatch.setattr(gq, "request_generation",
+                        lambda bid, **kw: kicked.append(bid))
+    service._ARMED.clear()
+    assert service.arm_book("plain1") is None     # no thread, no planner
+    assert kicked == ["plain1"]
+    assert service.arm_book("plain1") is None     # idempotent
+    assert kicked == ["plain1"]
+
+
+def test_ingest_never_blocks_on_the_planner(llm_env, monkeypatch):
+    """The add path plans heuristically even with an endpoint configured."""
+    import fix
+    from app.ingest import service
+    import tempfile
+
+    def boom():
+        raise AssertionError("ingest must not construct an LLM client")
+
+    monkeypatch.setattr(llm_plan, "make_client", boom)
+    with fix.temp_data():
+        tmp = tempfile.TemporaryDirectory(prefix="recite-arm-")
+        with tmp:
+            path = os.path.join(tmp.name, "book.epub")
+            fix.write_epub(path)
+            book = service.ingest_file(path)
+            m = manifestio.load(book["id"])
+    assert m["planner"] == "heuristic"

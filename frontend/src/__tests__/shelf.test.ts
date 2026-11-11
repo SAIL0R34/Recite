@@ -103,6 +103,9 @@ describe('sectionBooks', () => {
       book('u1', 'Fresh'),
     ])
     expect(out.map((s) => s.key)).toEqual(['reading', 'generating', 'unread'])
+    expect(out.map((s) => s.label)).toEqual([
+      'Reading', 'Generating narration', 'Generated',
+    ])
     expect(out[0].books.map((b) => b.id)).toEqual(['r2', 'r1']) // by recency
     expect(out[1].books.map((b) => b.id)).toEqual(['g1'])
   })

@@ -608,6 +608,16 @@ def generate_section(book_id: str, section_idx: int) -> None:
     work_dir = encode.prepare_work_dir(book_dir, section_idx)
 
     _set_status(book_id, section_idx, "synthesizing")
+    # Claiming the status may have raced a background re-plan (arm_book):
+    # re-resolve the section so synthesis and timings always target the
+    # chunks that are on disk NOW. Re-plan only touches sections that were
+    # still `pending`, so after this claim they can never change again.
+    claimed = manifestio.load(book_id)
+    if claimed is not None:
+        fresh = next((s for s in claimed.get("sections", [])
+                      if s.get("idx") == section_idx), None)
+        if fresh is not None:
+            section = fresh
     # First synthesis on a cold machine pulls the ~330MB model; say so once
     # on the book's event channel so the reader can show it.
     if not kokoro_service.pipeline_ready():

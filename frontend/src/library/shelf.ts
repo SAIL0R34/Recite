@@ -83,7 +83,8 @@ export interface ShelfSection {
 /**
  * Split the library into shelf sections. In-progress books sit up front by
  * recency; still-synthesizing unread books get their own workshop shelf and
- * visibly migrate off it as the 4s poll reports them done.
+ * visibly migrate off it as the 4s poll reports them done — landing on
+ * "Generated" until the book is opened and read.
  */
 export function sectionBooks(books: BookSummary[]): ShelfSection[] {
   // created_at/updated_at are epoch seconds (numbers) despite the old type
@@ -109,7 +110,7 @@ export function sectionBooks(books: BookSummary[]): ShelfSection[] {
   const out: ShelfSection[] = [
     { key: 'reading', label: 'Reading', books: reading },
     { key: 'generating', label: 'Generating narration', books: generating },
-    { key: 'unread', label: 'To read', books: unread },
+    { key: 'unread', label: 'Generated', books: unread },
   ]
   return out.filter((s) => s.books.length > 0)
 }
